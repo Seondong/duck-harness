@@ -457,9 +457,13 @@ def _kaggle_env(username: str, key: str) -> dict[str, str]:
     env = os.environ.copy()
     env["KAGGLE_USERNAME"] = username
     env["KAGGLE_KEY"] = key
-    # kaggle CLI >= 2.x authenticates with KAGGLE_API_TOKEN. Keep KAGGLE_KEY
-    # for older clients and set both so the deployment works across versions.
-    env["KAGGLE_API_TOKEN"] = key
+    # KAGGLE_API_TOKEN is a different credential from the kaggle.json key, not a
+    # newer spelling of it. Feeding the key in as a token makes the CLI send it
+    # as a bearer token and every call 401s -- including for clients that would
+    # otherwise have authenticated fine from KAGGLE_KEY / kaggle.json. Only a
+    # real token from the environment is passed through.
+    if not env.get("KAGGLE_API_TOKEN"):
+        env.pop("KAGGLE_API_TOKEN", None)
     return env
 
 
