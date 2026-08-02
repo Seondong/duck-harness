@@ -46,6 +46,28 @@ class TestWindowSelection:
         assert motion_context.select_window(frames([0, 1, 1, 2, 3, 4]), None) is not None
         assert motion_context.select_window(frames([0, 1, 1, 2, 2, 3]), None) is None
 
+    def test_prefers_the_window_where_more_actually_happened(self):
+        """A HUD tick keeps a still board technically alive; pick the busy window."""
+        def quiet(step: int) -> Frame:
+            grid = [[0] * 8 for _ in range(8)]
+            grid[0][step % 8] = 5          # a one-cell timer, ticking
+            return Frame(grid=tuple(tuple(r) for r in grid), step=step, level=1)
+
+        def busy(step: int) -> Frame:
+            grid = [[0] * 8 for _ in range(8)]
+            grid[0][step % 8] = 5
+            for c in range(6):             # a big object sliding
+                grid[4][(c + step) % 8] = 9
+            return Frame(grid=tuple(tuple(r) for r in grid), step=step, level=1)
+
+        history = [HistoryEntry(action="UP", frame=busy(i)) for i in range(6)]
+        history += [HistoryEntry(action="UP", frame=quiet(i)) for i in range(6, 12)]
+        window = motion_context.select_window(history, None)
+        assert window is not None
+        # the busy stretch is the older one, and should still win
+        moving = sum(1 for frame, _ in window if any(9 in row for row in frame.grid))
+        assert moving >= 4
+
     def test_never_spans_a_reset(self):
         history = _history([1] * 6)
         history[3] = HistoryEntry(action="RESET", frame=history[3].frame)

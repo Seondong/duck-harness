@@ -26,6 +26,8 @@ WINDOW_FRAMES = 6
 # five near-identical panels this way. One dead transition is itself a finding
 # worth showing; more than one and the window is mostly silence.
 MAX_DEAD_TRANSITIONS = 1
+# How far back to look for a window worth showing.
+SEARCH_FRAMES = 24
 
 # One visual token covers 32x32 px (patch_size 16, merge_size 2), so no upscale
 # resolves a single cell -- the vision channel is for gestalt, and segmentation
@@ -103,6 +105,15 @@ def select_window(
     if len(frames) < size:
         return None
 
+    # Only the recent past is worth framing from, and scoring every window ever
+    # recorded would cost more than it is worth.
+    frames = frames[-SEARCH_FRAMES:]
+    deltas = [
+        _changed_cells(frames[i - 1][0], frames[i][0])
+        for i in range(1, len(frames))
+    ]
+
+    best: tuple[int, int, list[tuple[Frame, str]]] | None = None
     for start in range(len(frames) - size, -1, -1):
         window = frames[start:start + size]
         if len({frame.level for frame, _ in window}) != 1:
@@ -111,14 +122,17 @@ def select_window(
         # attempts, so the overlay would draw a jump that never happened.
         if any(action.upper().startswith("RESET") for _, action in window[1:]):
             continue
-        dead = sum(
-            1 for i in range(1, size)
-            if _changed_cells(window[i - 1][0], window[i][0]) == 0
-        )
-        if dead > MAX_DEAD_TRANSITIONS:
+        window_deltas = deltas[start:start + size - 1]
+        if sum(1 for d in window_deltas if d == 0) > MAX_DEAD_TRANSITIONS:
             continue
-        return window
-    return None
+        # Prefer the busiest recent window, not merely the latest acceptable
+        # one. A HUD timer ticking one cell a step keeps every transition
+        # technically alive while the board stands still; the window where
+        # something actually happened carries far more changed cells.
+        score = sum(window_deltas)
+        if best is None or score > best[0]:
+            best = (score, start, window)
+    return best[2] if best is not None else None
 
 
 def _board_image(frame: Frame, scale: int) -> Image.Image:
