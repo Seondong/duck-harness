@@ -29,6 +29,8 @@ from inference.agent.vision_context import (
     current_grid_image_part,
 )
 
+from inference.agent.framing import run_framing
+from inference.agent.hypotheses import HypothesisSet
 from inference.agent.python_tool_sandbox import run_sandboxed_python
 from inference.agent.runtime_state import Frame, HistoryEntry, RUNTIME_STATE_FILENAME, load_runtime_state
 from inference.utils.openai_compat import build_chat_payload, build_headers
@@ -142,6 +144,10 @@ _LOCAL_ANALYZER_TOOL_TIMEOUT = _get_env_int("LOCAL_ANALYZER_TOOL_TIMEOUT", 30)
 _LOCAL_ANALYZER_TOOL_OUTPUT_TOKENS = _get_env_int("LOCAL_ANALYZER_TOOL_OUTPUT_TOKENS", 1024)
 _LOCAL_ANALYZER_YIELD_SECONDS = _get_env_float("LOCAL_ANALYZER_YIELD_SECONDS", 0.0)
 _LOCAL_ANALYZER_ENABLE_THINKING = _get_env_bool("LOCAL_ANALYZER_ENABLE_THINKING", True)
+_FRAMING_ENABLED = _get_env_bool("FRAMING_ENABLED", True)
+# Three extra model calls per framing. Capped per pass so a game that keeps
+# refuting itself cannot spend its wall clock on re-framing instead of playing.
+_FRAMING_MAX_PER_PASS = _get_env_int("FRAMING_MAX_PER_PASS", 6)
 _LOCAL_ANALYZER_TEMPERATURE = _get_env_float("LOCAL_ANALYZER_TEMPERATURE", 0.6)
 _LOCAL_ANALYZER_TOP_P = _get_env_float("LOCAL_ANALYZER_TOP_P", 0.95)
 _LOCAL_ANALYZER_TOP_K = _get_env_int("LOCAL_ANALYZER_TOP_K", 20)
@@ -959,6 +965,11 @@ class ToolAgent:
         # `_summarized_knowledge`, which the model rewrites (and therefore
         # degrades) every turn, this is never rewritten and never trimmed.
         self._notes: list[str] = []
+        # Framing: what kind of game this looks like, held as hypotheses that
+        # the play turns can refute. Owned here so the model cannot rewrite it.
+        self._hypotheses = HypothesisSet()
+        self._framing_runs = 0
+        self._framed_level: int | None = None
 
     def _headers(self) -> dict[str, str]:
         api_key = (
@@ -987,6 +998,9 @@ class ToolAgent:
             self._last_action_result = None
             self._summarized_knowledge = _empty_world_model()
             self._notes = []
+            self._hypotheses.reset()
+            self._framing_runs = 0
+            self._framed_level = None
 
     @property
     def total_tokens(self) -> int:
@@ -1240,6 +1254,16 @@ class ToolAgent:
         )
         lines.extend(self._summarized_knowledge_lines())
         lines.append("end of world model. ")
+        framing_lines = self._hypotheses.summary_lines()
+        if framing_lines:
+            lines.append(
+                "Framing held for this game. These were written from a filmstrip of recent motion, "
+                "not from this turn. You cannot edit them: from Python you may call "
+                "`kill(name, evidence)` when an action refutes one, or `confirm(name, evidence)` "
+                "when an action bears one out. Refuting one is progress, not failure."
+            )
+            lines.extend(framing_lines)
+            lines.append("end of framing. ")
         if action_num == 0:
             lines.append(
                 "Ground yourself in `current_frame` before acting, but start with a compact structural summary rather than restating the full frame."
@@ -1290,12 +1314,13 @@ class ToolAgent:
         *,
         tools: list[dict[str, Any]] | None,
         request_timeout_seconds: float | None = None,
+        max_tokens: int | None = None,
     ) -> _ChatCompletionResult:
         payload = build_chat_payload(
             provider=self._model.provider,
             model=self._model.model_id,
             messages=messages,
-            max_tokens=self._max_output_tokens,
+            max_tokens=max_tokens if max_tokens is not None else self._max_output_tokens,
             temperature=_LOCAL_ANALYZER_TEMPERATURE,
             top_p=_LOCAL_ANALYZER_TOP_P,
             top_k=_LOCAL_ANALYZER_TOP_K,
@@ -1337,6 +1362,88 @@ class ToolAgent:
             finish_reason=str(choice.get("finish_reason", "") or ""),
             usage=payload.get("usage"),
         )
+
+    def _should_frame(self, current_frame: Frame | None) -> bool:
+        """Frame on entering a level, and again once every hypothesis is dead.
+
+        Not on a timer: a framing that is still standing is still doing its job,
+        and re-asking would only invite the model to talk itself out of it.
+        """
+        if not _FRAMING_ENABLED or current_frame is None:
+            return False
+        # The whole layer is an argument that motion has to be seen. Against a
+        # text-only endpoint it would burn three calls to be told so.
+        if not current_grid_image_enabled():
+            return False
+        if self._framing_runs >= _FRAMING_MAX_PER_PASS:
+            return False
+        if self._framed_level != current_frame.level:
+            return True
+        return len(self._hypotheses) > 0 and not self._hypotheses.alive
+
+    def _run_framing(
+        self,
+        current_frame: Frame | None,
+        history_entries: list[HistoryEntry],
+        *,
+        append_transcript: Callable[[str, str], None] | None = None,
+    ) -> None:
+        """Ask what kind of game this is. Any failure leaves the game untouched."""
+        try:
+            from inference.agent import motion_context
+
+            window = motion_context.select_window(history_entries, current_frame)
+            if window is None:
+                return
+            filmstrip_url = motion_context.filmstrip_data_url(window)
+            trail_url = motion_context.trail_data_url(window)
+        except Exception as exc:
+            log.warning("framing: could not render motion, skipping: %s", exc)
+            return
+
+        def chat(messages: list[dict[str, Any]], budget: int) -> str:
+            result = self._chat_completion(messages, tools=None, max_tokens=budget)
+            self._accumulate_usage_tokens(result.usage)
+            return _normalize_message_content(result.message.get("content"))
+
+        self._framing_runs += 1
+        result = run_framing(
+            chat,
+            filmstrip_url=filmstrip_url,
+            trail_url=trail_url,
+            valid_actions=list(self._current_valid_actions),
+            notes_tail=self._notes[-12:],
+            dead_names=self._hypotheses.dead_names(),
+        )
+        if current_frame is not None:
+            self._framed_level = current_frame.level
+        if result is None:
+            return
+
+        step = current_frame.step if current_frame is not None else 0
+        adopted = self._hypotheses.adopt(
+            result.hypotheses,
+            category=result.category,
+            goal_hypothesis=result.goal_hypothesis,
+            step=step,
+        )
+        if result.goal_hypothesis:
+            self._notes.append(f"[goal?] {result.goal_hypothesis}")
+        for item in adopted:
+            self._notes.append(item.as_line())
+        if append_transcript is not None:
+            try:
+                append_transcript(
+                    "FRAMING",
+                    f"category={result.category}\n"
+                    f"goal={result.goal_hypothesis}\n\n"
+                    f"--- motion ---\n{result.motion}\n\n"
+                    f"--- recall ---\n{result.recall}\n\n"
+                    f"--- adopted ---\n"
+                    + "\n".join(item.as_line() for item in adopted),
+                )
+            except Exception:
+                pass
 
     def _trim_tool_text(self, text: str) -> tuple[str, bool]:
         if len(text) <= self._tool_output_chars:
@@ -1494,6 +1601,7 @@ class ToolAgent:
                     else {}
                 ),
                 "notes": list(self._notes),
+                "hypotheses": self._hypotheses.payload(),
             }
 
         terminal_action_result: dict[str, Any] | None = None
@@ -1566,6 +1674,13 @@ class ToolAgent:
             text = str(raw_note).strip()
             if text:
                 self._notes.append(text)
+        # A refuted framing is worth as much as a confirmed one, so both land in
+        # the log the trimming cannot reach.
+        step = current_frame.step if current_frame is not None else 0
+        for line in self._hypotheses.apply_verdicts(
+            sandbox_result.get("verdicts") or [], step=step
+        ):
+            self._notes.append(line)
         payload: dict[str, Any] = {"tool": "python"}
         rendered_stdout = str(sandbox_result.get("stdout", "") or "")
         rendered_error = str(sandbox_result.get("error", "") or "")
@@ -1734,6 +1849,16 @@ class ToolAgent:
         analyzer_log = transcript_path or (state_path.parent / f"{state_path.stem}_analyzer.txt")
         prompt_log = _resolve_prompt_log_path(state_path)
         current_frame, history_entries = load_runtime_state(state_path)
+        # Before the prompt is built, so whatever this settles is visible to the
+        # very turn that acts on it.
+        if self._should_frame(current_frame):
+            self._run_framing(
+                current_frame,
+                history_entries,
+                append_transcript=lambda label, content: _append_transcript_section(
+                    analyzer_log, label, content
+                ),
+            )
         user_prompt = self._build_user_prompt(
             action_num,
             valid_actions=valid_actions,

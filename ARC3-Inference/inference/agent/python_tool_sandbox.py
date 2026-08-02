@@ -319,6 +319,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
 
         action_results = []
         new_notes = []
+        verdicts = []
         stdout = io.StringIO()
         runtime_globals = {
             "__builtins__": {
@@ -383,6 +384,26 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
         runtime_globals["note"] = note
         runtime_globals["notes"] = notes_log
 
+        # Framing hypotheses are written by the harness and can only be killed
+        # or confirmed from here, always with evidence. A frame nobody can
+        # refute is a belief, and a wrong belief costs actions.
+        hypotheses_view = list((initial.get("state") or {}).get("hypotheses") or [])
+
+        def _verdict(kind):
+            def record(name, evidence):
+                entry = {
+                    "name": str(name),
+                    "evidence": str(evidence),
+                    "verdict": kind,
+                }
+                verdicts.append(entry)
+                return entry
+            return record
+
+        runtime_globals["hypotheses"] = hypotheses_view
+        runtime_globals["kill"] = _verdict("dead")
+        runtime_globals["confirm"] = _verdict("alive")
+
         _refresh_state(initial.get("state") or {})
 
         try:
@@ -396,6 +417,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "result": _json_safe(runtime_globals.get("result")),
                     "action_results": _json_safe(action_results),
                     "notes": _json_safe(new_notes),
+                    "verdicts": _json_safe(verdicts),
                 }
             )
         except Exception as exc:
@@ -406,6 +428,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "stdout": stdout.getvalue(),
                     "action_results": _json_safe(action_results),
                     "notes": _json_safe(new_notes),
+                    "verdicts": _json_safe(verdicts),
                 }
             )
 
@@ -585,6 +608,10 @@ def run_sandboxed_python(
                     "error": str(message.get("error", "") or ""),
                     "action_results": list(message.get("action_results") or host_action_results),
                     "notes": [str(item) for item in (message.get("notes") or [])],
+                    "verdicts": [
+                        item for item in (message.get("verdicts") or [])
+                        if isinstance(item, dict)
+                    ],
                 }
 
             _wait_for_process_exit(process)

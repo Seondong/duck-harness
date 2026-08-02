@@ -69,6 +69,10 @@ STRUCTURED_RUNTIME_STATE_ADDENDUM = (
     "- Write a note the moment you establish something, in your own words, verbatim and specific: what an action does, what a color or object means, what the goal appears to be, what you tried that failed and why, and the exact state where it failed. Prefer many small concrete notes over one summary. Include coordinates, colors, and step numbers -- a note you cannot act on later is wasted.\n"
     "- Before re-deriving anything, search what you already know: `[n for n in notes if 'MOUSE' in n]`. Cheaper than re-running an experiment, and it stops you repeating a failure you already paid for.\n"
     "- On a new level, read `notes` first. Mechanics carry across levels; the log is how earlier levels reach later ones.\n"
+
+    "- `hypotheses` is the list of framing hypotheses currently held for this game, each with `name`, `predicts`, and `killed_if`. They were written from a filmstrip of recent motion by a separate pass, so they are guesses about what kind of game this is -- not established facts, and not yours to edit.\n"
+    "- Call `kill(name, evidence)` the moment an action produces what a hypothesis said would refute it, and `confirm(name, evidence)` when an action produces what it predicted. Quote the concrete observation as the evidence: coordinates, colors, step numbers. Killing one is progress -- a frame that cannot be wrong is worth nothing.\n"
+    "- When you are unsure what to probe next, look for the cheapest action that would decide a live hypothesis. That is usually a better use of an action than another survey of the board.\n"
 )
 
 MULTIMODAL_CONTEXT_ADDENDUM = (
