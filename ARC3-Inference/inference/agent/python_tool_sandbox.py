@@ -318,6 +318,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
         _set_limits(timeout_seconds)
 
         action_results = []
+        new_notes = []
         stdout = io.StringIO()
         runtime_globals = {
             "__builtins__": {
@@ -367,6 +368,21 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
             return action_result
 
         runtime_globals["action"] = action
+
+        # Append-only findings log. `notes` survives across tool calls (the host
+        # carries it), so anything written here outlives the conversation
+        # trimming that drops older turns.
+        notes_log = list((initial.get("state") or {}).get("notes") or [])
+
+        def note(text):
+            entry = str(text)
+            notes_log.append(entry)
+            new_notes.append(entry)
+            return entry
+
+        runtime_globals["note"] = note
+        runtime_globals["notes"] = notes_log
+
         _refresh_state(initial.get("state") or {})
 
         try:
@@ -379,6 +395,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "stdout": stdout.getvalue(),
                     "result": _json_safe(runtime_globals.get("result")),
                     "action_results": _json_safe(action_results),
+                    "notes": _json_safe(new_notes),
                 }
             )
         except Exception as exc:
@@ -388,6 +405,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "error": _sanitize_exception(exc),
                     "stdout": stdout.getvalue(),
                     "action_results": _json_safe(action_results),
+                    "notes": _json_safe(new_notes),
                 }
             )
 
@@ -566,6 +584,7 @@ def run_sandboxed_python(
                     "result": message.get("result"),
                     "error": str(message.get("error", "") or ""),
                     "action_results": list(message.get("action_results") or host_action_results),
+                    "notes": [str(item) for item in (message.get("notes") or [])],
                 }
 
             _wait_for_process_exit(process)

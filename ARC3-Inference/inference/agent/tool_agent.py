@@ -955,6 +955,10 @@ class ToolAgent:
         self._last_step_summary: dict[str, Any] | None = None
         self._last_action_result: dict[str, Any] | None = None
         self._summarized_knowledge = _empty_world_model()
+        # Append-only verbatim findings log (PRO-LONG). Unlike
+        # `_summarized_knowledge`, which the model rewrites (and therefore
+        # degrades) every turn, this is never rewritten and never trimmed.
+        self._notes: list[str] = []
 
     def _headers(self) -> dict[str, str]:
         api_key = (
@@ -982,6 +986,7 @@ class ToolAgent:
             self._last_step_summary = None
             self._last_action_result = None
             self._summarized_knowledge = _empty_world_model()
+            self._notes = []
 
     @property
     def total_tokens(self) -> int:
@@ -1488,6 +1493,7 @@ class ToolAgent:
                     if isinstance(persisted_action_result, dict)
                     else {}
                 ),
+                "notes": list(self._notes),
             }
 
         terminal_action_result: dict[str, Any] | None = None
@@ -1556,6 +1562,10 @@ class ToolAgent:
             for item in sandbox_result.get("action_results") or []
             if isinstance(item, dict)
         ]
+        for raw_note in sandbox_result.get("notes") or []:
+            text = str(raw_note).strip()
+            if text:
+                self._notes.append(text)
         payload: dict[str, Any] = {"tool": "python"}
         rendered_stdout = str(sandbox_result.get("stdout", "") or "")
         rendered_error = str(sandbox_result.get("error", "") or "")
@@ -1920,6 +1930,7 @@ class ToolAgent:
                         "compare `previous_frame` to `current_frame` for the most recent change, "
                         "derives a compact board summary, programs a small search or scorer over candidate actions or short sequences, "
                         "then call `action(actions)` inside Python with the best valid action or ordered batch that your code selected. "
+                        "Read `notes` before re-deriving anything you may already have established, and call `note(...)` in the same tool call to record whatever this step settled -- including failures and the exact state they happened in. "
                         f"{TOOL_CALL_FORMAT_GUIDANCE}"
                     )
                     append_transcript("USER PROMPT", followup_prompt)

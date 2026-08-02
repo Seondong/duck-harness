@@ -64,6 +64,11 @@ STRUCTURED_RUNTIME_STATE_ADDENDUM = (
     "- Pass `action(actions)` a list like `['LEFT']` or `[{'action': 'MOUSE', 'row': 4, 'col': 7}]`.\n"
     "- One action usually returns one frame, but a single action can result in a short multi-frame animation.\n"
     "- After `action(actions)` returns, `current_frame`, `previous_frame`, `history`, `transitions`, `valid_actions`, and `last_action_result` are refreshed.\n"
+
+    "- `note(text)` appends one line to a permanent findings log, and `notes` is the list of every line logged so far this game. This is the ONLY memory that survives everything: the conversation above you is trimmed as it grows, but `notes` is never trimmed and never rewritten.\n"
+    "- Write a note the moment you establish something, in your own words, verbatim and specific: what an action does, what a color or object means, what the goal appears to be, what you tried that failed and why, and the exact state where it failed. Prefer many small concrete notes over one summary. Include coordinates, colors, and step numbers -- a note you cannot act on later is wasted.\n"
+    "- Before re-deriving anything, search what you already know: `[n for n in notes if 'MOUSE' in n]`. Cheaper than re-running an experiment, and it stops you repeating a failure you already paid for.\n"
+    "- On a new level, read `notes` first. Mechanics carry across levels; the log is how earlier levels reach later ones.\n"
 )
 
 MULTIMODAL_CONTEXT_ADDENDUM = (
