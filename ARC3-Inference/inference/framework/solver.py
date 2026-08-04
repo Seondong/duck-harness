@@ -239,7 +239,10 @@ class _HarnessGameSession:
         budget = max(float(base), (self.last_level_at - self.started_at) + extension)
         ceiling = self.solver.max_runtime_ceiling_s_per_game
         if ceiling is not None:
-            budget = min(budget, float(ceiling))
+            # A ceiling below the base would quietly shorten every game that
+            # ever cleared a level -- the exact opposite of this method. It
+            # caps the extension, never the base.
+            budget = max(float(base), min(budget, float(ceiling)))
         return budget
 
     def runtime_limit_reached(self) -> bool:

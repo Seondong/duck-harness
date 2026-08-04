@@ -110,6 +110,14 @@ def test_a_game_clearing_levels_forever_still_hits_the_ceiling(clock):
     assert session.runtime_limit_reached() is True
 
 
+def test_a_ceiling_below_the_base_caps_the_extension_not_the_base(clock):
+    """Misconfiguration should cost the extension, never the original budget."""
+    session = _session(clock, ceiling=BASE / 2)
+    clock.advance(BASE - 60)
+    session.last_level_at = clock.now
+    assert session.budget_s() == BASE
+
+
 def test_no_ceiling_means_progress_can_extend_indefinitely(clock):
     session = _session(clock, ceiling=None)
     for _ in range(20):
