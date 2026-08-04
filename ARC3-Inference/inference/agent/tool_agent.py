@@ -18,6 +18,7 @@ from inference.agent.prompts import (
     COMPACT_TOOL_SESSION_ADDENDUM,
     GAME_OVERVIEW_ADDENDUM,
     PYTHON_ADDENDUM,
+    FRAMING_HYPOTHESES_ADDENDUM,
     STRUCTURED_RUNTIME_STATE_ADDENDUM,
     MULTIMODAL_CONTEXT_ADDENDUM,
     TOOL_CALL_FORMAT_GUIDANCE,
@@ -357,6 +358,8 @@ def _build_system_prompt(*, tool_output_tokens: int) -> str:
     prompt = "You are a coding agent solving a grid-based puzzle game."
     prompt += GAME_OVERVIEW_ADDENDUM
     prompt += STRUCTURED_RUNTIME_STATE_ADDENDUM
+    if _FRAMING_ENABLED:
+        prompt += FRAMING_HYPOTHESES_ADDENDUM
     if current_grid_image_enabled():
         prompt += MULTIMODAL_CONTEXT_ADDENDUM
     prompt += VISUAL_GAME_ADDENDUM
@@ -1604,7 +1607,7 @@ class ToolAgent:
                 if isinstance(last_action_result, dict)
                 else self._last_action_result
             )
-            return {
+            state: dict[str, Any] = {
                 "current_frame": current_frame_payload,
                 "history": _ascii_history_view_payload(refreshed_history),
                 "valid_actions": sanitized_actions,
@@ -1614,8 +1617,13 @@ class ToolAgent:
                     else {}
                 ),
                 "notes": list(self._notes),
-                "hypotheses": self._hypotheses.payload(),
             }
+            # Absent, not empty: the sandbox keys `hypotheses`/`kill`/`confirm`
+            # off this key being present, and an empty list would still
+            # advertise them.
+            if _FRAMING_ENABLED:
+                state["hypotheses"] = self._hypotheses.payload()
+            return state
 
         terminal_action_result: dict[str, Any] | None = None
 

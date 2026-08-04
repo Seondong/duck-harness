@@ -400,9 +400,14 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                 return entry
             return record
 
-        runtime_globals["hypotheses"] = hypotheses_view
-        runtime_globals["kill"] = _verdict("dead")
-        runtime_globals["confirm"] = _verdict("alive")
+        # Only when framing actually produced something. With framing off the
+        # parent omits the key entirely, and offering an empty `hypotheses`
+        # with kill/confirm alongside it advertises a mechanism that can never
+        # do anything -- which is worse than not mentioning it.
+        if (initial.get("state") or {}).get("hypotheses") is not None:
+            runtime_globals["hypotheses"] = hypotheses_view
+            runtime_globals["kill"] = _verdict("dead")
+            runtime_globals["confirm"] = _verdict("alive")
 
         _refresh_state(initial.get("state") or {})
 
