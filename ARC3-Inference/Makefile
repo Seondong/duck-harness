@@ -163,6 +163,12 @@ DEPLOYMENT_SLURM_LOCAL_SERVER_CONFIG ?= $(CONFIG_PATH)
 MULTIMODAL_CONTEXT ?= $(shell $(CONFIG_VALUE) multimodal.context)
 MULTIMODAL_UPSCALE ?= $(shell $(CONFIG_VALUE) multimodal.upscale 16)
 
+# The analogy framing side-call. Off: its one scored run came back at 0.86
+# against 1.16 without it, and the rerun log never confirmed it had executed.
+# Flip to 1 for the A/B that would settle that.
+FRAMING_ENABLED ?= 0
+FRAMING_MAX_PER_PASS ?= 6
+
 CHAT_BASE_URL ?= $(shell $(CONFIG_VALUE) chat.base_url $(LOCAL_ANALYZER_BASE_URL))
 CHAT_PROVIDER ?= $(shell $(CONFIG_VALUE) chat.provider $(LOCAL_ANALYZER_PROVIDER))
 CHAT_MODEL ?= auto
@@ -211,6 +217,8 @@ export LOCAL_ANALYZER_SITE_URL
 export LOCAL_ANALYZER_APP_NAME
 export MULTIMODAL_CONTEXT
 export MULTIMODAL_UPSCALE
+export FRAMING_ENABLED
+export FRAMING_MAX_PER_PASS
 export CHAT_PROVIDER
 export OPENROUTER_API_KEY
 export OPENAI_API_KEY
