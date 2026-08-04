@@ -47,6 +47,12 @@ EXCLUDE_GAME_TAGS ?= $(shell $(CONFIG_VALUE) environment.exclude_tags)
 ENVIRONMENTS_DIR ?= $(shell $(CONFIG_VALUE) environment.environments_dir)
 MAX_ACTIONS ?= $(shell $(CONFIG_VALUE) environment.max_steps)
 MAX_RUNTIME_MINUTES ?= $(shell $(CONFIG_VALUE) environment.max_runtime_minutes)
+# Progress buys time: a game runs until its last level clear plus this, never
+# below MAX_RUNTIME_MINUTES and never past the ceiling. Empty/0 = the old
+# fixed budget.
+LEVEL_EXTENSION_MINUTES ?=
+MAX_RUNTIME_CEILING_MINUTES ?=
+GLOBAL_RUNTIME_MINUTES ?=
 MAX_EXPERIMENT_RUNTIME_HOURS ?= $(shell $(CONFIG_VALUE) environment.max_experiment_runtime_hours)
 MAX_EXPERIMENT_RUNTIME_MINUTES ?= $(shell $(CONFIG_VALUE) environment.max_experiment_runtime_minutes)
 MAX_EXPERIMENT_RUNTIME_ARGS = $(if $(strip $(MAX_EXPERIMENT_RUNTIME_MINUTES)),--max-experiment-runtime-minutes $(MAX_EXPERIMENT_RUNTIME_MINUTES),$(if $(strip $(MAX_EXPERIMENT_RUNTIME_HOURS)),--max-experiment-runtime-hours $(MAX_EXPERIMENT_RUNTIME_HOURS),))
@@ -398,6 +404,14 @@ kaggle-duck: EXCLUDE_GAME_TAGS =
 kaggle-duck: MODEL = local
 kaggle-duck: RUN_NAME = duck-harness-kaggle
 kaggle-duck: MAX_RUNTIME_MINUTES = 132
+# 132 min is what the 1.16 run gave every game, kept as the base so this stays
+# an addition to that configuration rather than a replacement of it. A game
+# that cleared a level in the last 45 min keeps playing, to 300 min at most;
+# the 420 min global guard exists because a kernel that overruns produces no
+# submission at all.
+kaggle-duck: LEVEL_EXTENSION_MINUTES = 45
+kaggle-duck: MAX_RUNTIME_CEILING_MINUTES = 300
+kaggle-duck: GLOBAL_RUNTIME_MINUTES = 420
 kaggle-duck: MAX_EXPERIMENT_RUNTIME_MINUTES = 540
 kaggle-duck: MAX_EXPERIMENT_RUNTIME_HOURS =
 kaggle-duck: N_PASSES = 1
@@ -435,6 +449,9 @@ _taaf-run:
 		$(if $(strip $(EXPERIMENT_DIR)),--experiment-dir '$(EXPERIMENT_DIR)',) \
 		$(if $(strip $(MAX_ACTIONS)),--max-actions $(MAX_ACTIONS),) \
 		$(if $(strip $(MAX_RUNTIME_MINUTES)),--max-runtime-minutes $(MAX_RUNTIME_MINUTES),) \
+		$(if $(strip $(LEVEL_EXTENSION_MINUTES)),--level-extension-minutes $(LEVEL_EXTENSION_MINUTES),) \
+		$(if $(strip $(MAX_RUNTIME_CEILING_MINUTES)),--max-runtime-ceiling-minutes $(MAX_RUNTIME_CEILING_MINUTES),) \
+		$(if $(strip $(GLOBAL_RUNTIME_MINUTES)),--global-runtime-minutes $(GLOBAL_RUNTIME_MINUTES),) \
 		$(MAX_EXPERIMENT_RUNTIME_ARGS) \
 		--n-passes $(N_PASSES) \
 		--concurrent-jobs $(CONCURRENT_JOBS) \

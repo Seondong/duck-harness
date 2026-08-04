@@ -400,6 +400,13 @@ def _local_server_config_path(args: argparse.Namespace, *, run_dir: Path) -> str
     return str(_bundled_project_root(run_dir) / repo_relative_path)
 
 
+def _optional_minutes_to_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
+    seconds = float(value) * 60.0
+    return seconds if seconds > 0 else None
+
+
 def _make_solver(
     args: argparse.Namespace,
     *,
@@ -419,6 +426,13 @@ def _make_solver(
         analyzer_timeout=getattr(args, "analyzer_timeout", 120),
         max_actions_per_game=args.max_actions,
         max_runtime_s_per_game=max_runtime_minutes_per_game * 60.0,
+        level_extension_s=float(getattr(args, "level_extension_minutes", 0.0) or 0.0) * 60.0,
+        max_runtime_ceiling_s_per_game=_optional_minutes_to_seconds(
+            getattr(args, "max_runtime_ceiling_minutes", None)
+        ),
+        global_runtime_s=_optional_minutes_to_seconds(
+            getattr(args, "global_runtime_minutes", None)
+        ),
         concurrency=effective_concurrency,
         save_request_logs=bool(args.analyzer_save_request_logs),
         start_local_server=start_local_server,
@@ -802,6 +816,9 @@ def _write_run_config(
         "max_actions": args.max_actions,
         "max_runtime_minutes_per_game": max_runtime_minutes_per_game,
         "max_runtime_minutes_per_game_source": max_runtime_minutes_per_game_source,
+        "level_extension_minutes": float(getattr(args, "level_extension_minutes", 0.0) or 0.0),
+        "max_runtime_ceiling_minutes": getattr(args, "max_runtime_ceiling_minutes", None),
+        "global_runtime_minutes": getattr(args, "global_runtime_minutes", None),
         "max_experiment_runtime_minutes": max_experiment_runtime_minutes,
         "max_experiment_runtime_hours": (
             None
@@ -1222,6 +1239,11 @@ def main() -> None:
     parser.add_argument("--experiment-dir", dest="experiment_dir", default="")
     parser.add_argument("--max-actions", type=int, default=None)
     parser.add_argument("--max-runtime-minutes", type=float, default=None)
+    # Progress buys time. See _HarnessGameSession.budget_s for why depth is
+    # worth paying for and why the extension keys off the *last* level.
+    parser.add_argument("--level-extension-minutes", type=float, default=0.0)
+    parser.add_argument("--max-runtime-ceiling-minutes", type=float, default=None)
+    parser.add_argument("--global-runtime-minutes", type=float, default=None)
     parser.add_argument("--max-experiment-runtime-minutes", type=float, default=None)
     parser.add_argument("--max-experiment-runtime-hours", type=float, default=None)
     parser.add_argument("--n-passes", dest="n_passes", type=int, default=1)

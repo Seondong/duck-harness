@@ -182,6 +182,11 @@ class _HarnessGameSession:
     analysis_step: int = 0
     last_engine_action: str | None = None
     token_baseline: int = 0
+    # When the most recent level fell, on the same clock as ``started_at``.
+    # None until the first one does. Drives the progress extension below.
+    last_level_at: float | None = field(default=None, init=False, repr=False)
+    levels_cleared: int = field(default=0, init=False, repr=False)
+    stop_reason: str = field(default="", init=False, repr=False)
     _viewer_events_flushed: int = field(default=0, init=False, repr=False)
 
     def current_frame(self) -> Frame:
@@ -209,19 +214,55 @@ class _HarnessGameSession:
         run = self.game.game_run
         return len(run.history) if run is not None else 0
 
+    def budget_s(self) -> float | None:
+        """Seconds this game may run, measured from ``started_at``.
+
+        Every game gets the base budget. A game that cleared a level *recently*
+        gets more, because the score formula makes depth nearly free: an
+        unreached level still takes its full weight in the denominator, and the
+        actions spent on a level that was never cleared score nothing at all.
+        Clearing one more level therefore adds a non-negative term and raises
+        the cap -- it can never lower the final number, however sloppily it was
+        done.
+
+        What it does cost is GPU, shared with every other game in the wave. So
+        the extension is keyed to the *last* clear, not to how many there have
+        been: a game that cleared level 1 early and then stalled dies on the
+        base budget exactly as it did before. Only games still moving stay.
+        """
+        base = self.solver.max_runtime_s_per_game
+        if base is None:
+            return None
+        extension = float(self.solver.level_extension_s or 0.0)
+        if extension <= 0.0 or self.last_level_at is None:
+            return float(base)
+        budget = max(float(base), (self.last_level_at - self.started_at) + extension)
+        ceiling = self.solver.max_runtime_ceiling_s_per_game
+        if ceiling is not None:
+            budget = min(budget, float(ceiling))
+        return budget
+
     def runtime_limit_reached(self) -> bool:
-        if self.solver.max_runtime_s_per_game is None:
+        budget = self.budget_s()
+        if budget is None:
             return False
-        return (
-            time.monotonic() - self.started_at
-        ) >= self.solver.max_runtime_s_per_game
+        return (time.monotonic() - self.started_at) >= budget
+
+    def global_limit_reached(self) -> bool:
+        """The whole-run guard. Losing the kernel loses the submission."""
+        deadline = self.solver.global_deadline_monotonic()
+        return deadline is not None and time.monotonic() >= deadline
 
     def timing_payload(self) -> dict[str, float | None]:
         elapsed = max(0.0, time.monotonic() - self.started_at)
-        if self.solver.max_runtime_s_per_game is None:
-            remaining = None
-        else:
-            remaining = max(0.0, self.solver.max_runtime_s_per_game - elapsed)
+        budget = self.budget_s()
+        remaining = None if budget is None else max(0.0, budget - elapsed)
+        global_deadline = self.solver.global_deadline_monotonic()
+        if global_deadline is not None:
+            global_remaining = max(0.0, global_deadline - time.monotonic())
+            remaining = (
+                global_remaining if remaining is None else min(remaining, global_remaining)
+            )
         return {"run_elapsed_seconds": elapsed, "time_remaining_seconds": remaining}
 
     def request_timeout_seconds(self) -> float | None:
@@ -232,10 +273,9 @@ class _HarnessGameSession:
                 candidates.append(float(configured))
         except (TypeError, ValueError):
             pass
-        if self.solver.max_runtime_s_per_game is not None:
-            remaining = self.timing_payload()["time_remaining_seconds"]
-            if remaining is not None:
-                candidates.append(float(remaining))
+        remaining = self.timing_payload()["time_remaining_seconds"]
+        if remaining is not None:
+            candidates.append(float(remaining))
         soft_remaining = self.solver.soft_time_remaining_seconds()
         if soft_remaining is not None:
             candidates.append(soft_remaining)
@@ -243,21 +283,56 @@ class _HarnessGameSession:
             return None
         return max(0.1, min(candidates))
 
+    def _record_level_cleared(self, levels_completed: int) -> None:
+        """A level fell: restart the progress clock, and say so in the log.
+
+        The per-level line is the only place a running submission tells us
+        *when* progress happened rather than just how much of it there was, and
+        that is exactly what says whether the extension is earning its keep.
+        """
+        now = time.monotonic()
+        self.last_level_at = now
+        self.levels_cleared = levels_completed
+        run = self.game.game_run
+        game_id = run.game_id if run is not None else "?"
+        budget = self.budget_s()
+        print(
+            f"[level] {game_id} level={levels_completed}/{self.game.number_of_levels} "
+            f"t={now - self.started_at:.0f}s actions={self.action_count} "
+            f"budget={'-' if budget is None else f'{budget:.0f}s'}",
+            flush=True,
+        )
+
+    def _stopping(self, reason: str) -> bool:
+        # First reason wins: should_stop() is polled long after the loop has
+        # exited, and the later reasons would otherwise overwrite the real one.
+        if not self.stop_reason:
+            self.stop_reason = reason
+        return True
+
     def should_stop(self) -> bool:
         run = self.game.game_run
         if run is None or run.state != "playing":
-            return True
+            return self._stopping("finished")
         if self.stop_event.is_set():
-            return True
+            return self._stopping("cancelled")
         if _is_run_complete(self.game):
-            return True
+            return self._stopping("won")
+        if self.global_limit_reached():
+            return self._stopping("global_deadline")
         if self.runtime_limit_reached():
-            return True
+            # Worth telling apart in the log: one says the base budget was the
+            # binding constraint, the other says the extension was and still
+            # ran out.
+            base = self.solver.max_runtime_s_per_game
+            budget = self.budget_s()
+            extended = budget is not None and base is not None and budget > float(base)
+            return self._stopping("time_limit_extended" if extended else "time_limit")
         if (
             self.solver.max_actions_per_game is not None
             and self.action_count >= self.solver.max_actions_per_game
         ):
-            return True
+            return self._stopping("action_limit")
         return False
 
     def play(self) -> None:
@@ -331,11 +406,31 @@ class _HarnessGameSession:
         finally:
             total_tokens = _analyzer_reported_tokens(self.analyzer)
             if run.solver_note is None:
-                run.solver_note = f"tokens={total_tokens}"
+                run.solver_note = self._finish_note(total_tokens)
             self._finish_if_needed()
             self.state_path.unlink(missing_ok=True)
             self._write_analysis_html()
             self.write_viewer_payload()
+
+    def _finish_note(self, total_tokens: int) -> str:
+        """What ``[finished]`` says about why this run ended, and when.
+
+        ``stop`` is the whole point: a run that ends on ``time_limit`` with the
+        clock still moving is asking for a bigger budget, and one that ends on
+        ``time_limit_extended`` already took it. Without this the log shows the
+        score and leaves the cause to guesswork -- which is how the last
+        submission came back uninterpretable.
+        """
+        elapsed = time.monotonic() - self.started_at
+        parts = [
+            f"stop={self.stop_reason or 'loop_exit'}",
+            f"tokens={total_tokens}",
+            f"elapsed={elapsed:.0f}s",
+            f"budget={'-' if self.budget_s() is None else f'{self.budget_s():.0f}s'}",
+        ]
+        if self.last_level_at is not None:
+            parts.append(f"last_level_at={self.last_level_at - self.started_at:.0f}s")
+        return " ".join(parts)
 
     def _finish_if_needed(self) -> None:
         run = self.game.game_run
@@ -704,6 +799,8 @@ class _HarnessGameSession:
         level_completed = bool(
             new_state.just_won_level and raw_state != arcengine.GameState.WIN
         )
+        if level_completed:
+            self._record_level_cleared(completed)
         payload = {
             "executed": True,
             "action_num": self.action_count,
@@ -743,6 +840,15 @@ class HarnessSolver(Solver):
     analyzer_timeout: float | None = 120.0
     max_actions_per_game: int | None = None
     max_runtime_s_per_game: float | None = None
+    # Progress buys time: a game gets until ``last level cleared +
+    # level_extension_s``, never past ``max_runtime_ceiling_s_per_game``, and
+    # never less than ``max_runtime_s_per_game``. Zero disables it, which is
+    # the pre-existing fixed-budget behaviour.
+    level_extension_s: float = 0.0
+    max_runtime_ceiling_s_per_game: float | None = None
+    # Whole-run wall clock, from setup(). A killed kernel produces no
+    # submission at all, so this bounds the extension's worst case.
+    global_runtime_s: float | None = None
     concurrency: int = 16
     save_request_logs: bool = False
     start_local_server: bool = False
@@ -803,6 +909,26 @@ class HarnessSolver(Solver):
     # Python's default executor, capped at min(32, cpu+4) — which would
     # silently cap real concurrency below self.concurrency.
     _worker_pool: ThreadPoolExecutor | None = field(default=None, init=False, repr=False, compare=False)
+    _global_deadline: float | None = field(default=None, init=False, repr=False, compare=False)
+
+    def setup(self) -> None:
+        super().setup()
+        # Stamped here rather than at import: setup() runs once, on the played
+        # copy, after the model server is up and immediately before the first
+        # game starts. Anchoring to it keeps the guard measuring play time and
+        # not however long vLLM took to load.
+        if self.global_runtime_s is not None and self.global_runtime_s > 0:
+            self._global_deadline = time.monotonic() + float(self.global_runtime_s)
+            print(
+                f"[budget] base={self.max_runtime_s_per_game}s "
+                f"extension={self.level_extension_s}s "
+                f"ceiling={self.max_runtime_ceiling_s_per_game}s "
+                f"global={self.global_runtime_s}s",
+                flush=True,
+            )
+
+    def global_deadline_monotonic(self) -> float | None:
+        return self._global_deadline
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -816,6 +942,7 @@ class HarnessSolver(Solver):
         state.pop("_local_servers", None)
         state.pop("_local_server_original_env", None)
         state.pop("_worker_pool", None)
+        state.pop("_global_deadline", None)
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -829,6 +956,7 @@ class HarnessSolver(Solver):
         self._local_servers = []
         self._local_server_original_env = {}
         self._worker_pool = None
+        self._global_deadline = None
 
     def __deepcopy__(self, memo: dict[int, Any]) -> "HarnessSolver":
         cls = type(self)
@@ -843,7 +971,7 @@ class HarnessSolver(Solver):
                 object.__setattr__(new, key, [])
             elif key == "_local_server_original_env":
                 object.__setattr__(new, key, {})
-            elif key == "_worker_pool":
+            elif key in ("_worker_pool", "_global_deadline"):
                 object.__setattr__(new, key, None)
             else:
                 object.__setattr__(new, key, copy.deepcopy(value, memo))
