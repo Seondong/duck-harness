@@ -90,8 +90,17 @@ def select_window(
 ) -> list[tuple[Frame, str]] | None:
     """The most recent window worth looking at, or None.
 
-    Three rules, all learned from real recordings: one level only, no RESET
-    inside the window, and at most one transition that changed nothing.
+    Four rules, all learned from real recordings: the window must sit inside
+    the level being played now, must not span a RESET, and may contain at most
+    one transition that changed nothing.
+
+    The first rule is not the same as "one level only". Requiring merely that
+    the window be single-level let a level-2 framing be built from six level-1
+    panels, every single time, because framing fires *on entering* a level --
+    the moment when the only footage in hand is the previous level's. The new
+    level then got described, categorised and hypothesised from a game it was
+    not playing. Returning None here instead just defers framing until the
+    level has produced enough frames of its own.
     """
     frames: list[tuple[Frame, str]] = []
     for entry in history_entries:
@@ -113,10 +122,15 @@ def select_window(
         for i in range(1, len(frames))
     ]
 
+    target_level = current_frame.level if current_frame is not None else None
+
     best: tuple[int, int, list[tuple[Frame, str]]] | None = None
     for start in range(len(frames) - size, -1, -1):
         window = frames[start:start + size]
-        if len({frame.level for frame, _ in window}) != 1:
+        levels = {frame.level for frame, _ in window}
+        if len(levels) != 1:
+            continue
+        if target_level is not None and levels != {target_level}:
             continue
         # RESET rewinds the level. The frames on either side belong to different
         # attempts, so the overlay would draw a jump that never happened.

@@ -118,6 +118,14 @@ def duck_kaggle_setup_command(config: DuckKaggleVllmConfig | None = None) -> str
         "__LOCAL_ANALYZER_ENABLE_THINKING__": repr(os.environ.get("LOCAL_ANALYZER_ENABLE_THINKING", "1")),
         "__MULTIMODAL_CONTEXT__": repr(os.environ.get("MULTIMODAL_CONTEXT", "current_grid")),
         "__MULTIMODAL_UPSCALE__": repr(os.environ.get("MULTIMODAL_UPSCALE", "4")),
+        # Off by default on Kaggle. The one scored run with the analogy framing
+        # layer on came back at 0.86 against 1.16 without it, and the rerun log
+        # never confirmed the layer had even executed -- so it is not carrying
+        # its weight as a default. The code ships; turning it on is now a
+        # deliberate act that lands in taaf_setup_env.json where the next run
+        # can be read against it.
+        "__FRAMING_ENABLED__": repr(os.environ.get("FRAMING_ENABLED", "0")),
+        "__FRAMING_MAX_PER_PASS__": repr(os.environ.get("FRAMING_MAX_PER_PASS", "6")),
         "__VLLM_TENSOR_PARALLEL_SIZE__": repr(int(cfg.tensor_parallel_size)),
         "__WHEELHOUSE_STAMP_TEXT__": repr(cfg.wheelhouse_stamp_text),
     }
@@ -390,6 +398,8 @@ setup_env = {
     'LOCAL_ANALYZER_ENABLE_THINKING': __LOCAL_ANALYZER_ENABLE_THINKING__,
     'MULTIMODAL_CONTEXT': __MULTIMODAL_CONTEXT__,
     'MULTIMODAL_UPSCALE': __MULTIMODAL_UPSCALE__,
+    'FRAMING_ENABLED': __FRAMING_ENABLED__,
+    'FRAMING_MAX_PER_PASS': __FRAMING_MAX_PER_PASS__,
 }
 setup_env_path = Path(os.environ['TAAF_KAGGLE_SETUP_ENV'])
 existing_setup_env = {}

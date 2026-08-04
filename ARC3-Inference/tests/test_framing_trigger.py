@@ -73,7 +73,7 @@ def test_a_failed_framing_still_marks_the_level_so_it_is_not_retried_forever(age
     assert agent._framing_runs == 0
 
 
-def test_a_model_failure_marks_the_level_and_leaves_the_game_alone(agent, monkeypatch):
+def test_a_model_failure_leaves_the_level_unframed_and_the_game_alone(agent, monkeypatch):
     monkeypatch.setattr(ta, "run_framing", lambda *a, **k: None)
     monkeypatch.setattr(
         ta.ToolAgent, "_should_frame", lambda self, frame: True
@@ -85,6 +85,9 @@ def test_a_model_failure_marks_the_level_and_leaves_the_game_alone(agent, monkey
     monkeypatch.setattr(motion_context, "trail_data_url", lambda w, **k: "data:,")
 
     agent._run_framing(_frame(level=4), [])
-    assert agent._framed_level == 4
+    # A flaky endpoint used to consume the level's one attempt. The cap on runs
+    # per pass is what bounds retries; a failed call should not.
+    assert agent._framed_level is None
     assert agent._notes == []
     assert len(agent._hypotheses) == 0
+    assert agent._framing_runs == 1

@@ -1386,6 +1386,7 @@ class ToolAgent:
         current_frame: Frame | None,
         history_entries: list[HistoryEntry],
         *,
+        request_timeout_seconds: float | None = None,
         append_transcript: Callable[[str, str], None] | None = None,
     ) -> None:
         """Ask what kind of game this is. Any failure leaves the game untouched."""
@@ -1401,8 +1402,17 @@ class ToolAgent:
             log.warning("framing: could not render motion, skipping: %s", exc)
             return
 
+        # Framing is three model calls deep and sits outside the play turn's
+        # own clock, so without this it fell back to the analyzer timeout --
+        # 900s a call, 45 minutes for the side-call, taken whether the game had
+        # 45 minutes left or five. The play loop's remaining-time figure is
+        # already computed for us; share it, and split it across the turns.
+        share = None if request_timeout_seconds is None else max(1.0, request_timeout_seconds / 3.0)
+
         def chat(messages: list[dict[str, Any]], budget: int) -> str:
-            result = self._chat_completion(messages, tools=None, max_tokens=budget)
+            result = self._chat_completion(
+                messages, tools=None, max_tokens=budget, request_timeout_seconds=share
+            )
             self._accumulate_usage_tokens(result.usage)
             return _normalize_message_content(result.message.get("content"))
 
@@ -1415,10 +1425,13 @@ class ToolAgent:
             notes_tail=self._notes[-12:],
             dead_names=self._hypotheses.dead_names(),
         )
+        if result is None:
+            # Deliberately leaves _framed_level alone. Marking the level framed
+            # on a failed call spent the level's one attempt on an endpoint
+            # hiccup; the cap on runs per pass is what bounds retries.
+            return
         if current_frame is not None:
             self._framed_level = current_frame.level
-        if result is None:
-            return
 
         step = current_frame.step if current_frame is not None else 0
         adopted = self._hypotheses.adopt(
@@ -1855,6 +1868,7 @@ class ToolAgent:
             self._run_framing(
                 current_frame,
                 history_entries,
+                request_timeout_seconds=request_timeout_seconds,
                 append_transcript=lambda label, content: _append_transcript_section(
                     analyzer_log, label, content
                 ),

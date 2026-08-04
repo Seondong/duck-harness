@@ -38,6 +38,21 @@ class TestWindowSelection:
         window = motion_context.select_window(_history([1] * 6), None)
         assert window is not None and len(window) == 6
 
+    def test_refuses_to_frame_a_new_level_from_the_previous_one(self):
+        """The bug that shipped: framing fires on entering a level, and the
+        only footage in hand at that moment belongs to the level just left.
+        A single-level window is not enough -- it has to be *this* level."""
+        history = _history([1] * 10 + [2, 2])
+        current = _frame(step=12, level=2, mark=1)
+        assert motion_context.select_window(history, current) is None
+
+    def test_frames_the_new_level_once_it_has_enough_frames_of_its_own(self):
+        history = _history([1] * 6 + [2] * 6)
+        current = _frame(step=12, level=2, mark=1)
+        window = motion_context.select_window(history, current)
+        assert window is not None
+        assert {frame.level for frame, _ in window} == {2}
+
     def test_tolerates_one_dead_transition_but_not_two(self):
         def frames(steps: list[int]) -> list[HistoryEntry]:
             return [HistoryEntry(action="UP", frame=_frame(step, 1, 1)) for step in steps]
