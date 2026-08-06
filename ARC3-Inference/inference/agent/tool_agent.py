@@ -32,6 +32,7 @@ from inference.agent.vision_context import (
 
 from inference.agent.framing import run_framing
 from inference.agent.hypotheses import HypothesisSet
+from inference.agent import motifs
 from inference.agent.python_tool_sandbox import run_sandboxed_python
 from inference.agent.runtime_state import Frame, HistoryEntry, RUNTIME_STATE_FILENAME, load_runtime_state
 from inference.utils.openai_compat import build_chat_payload, build_headers
@@ -149,6 +150,9 @@ _FRAMING_ENABLED = _get_env_bool("FRAMING_ENABLED", True)
 # Three extra model calls per framing. Capped per pass so a game that keeps
 # refuting itself cannot spend its wall clock on re-framing instead of playing.
 _FRAMING_MAX_PER_PASS = _get_env_int("FRAMING_MAX_PER_PASS", 6)
+# The motif vocabulary: ~440 tokens of names in the system prompt, with the
+# per-motif detail fetched from Python only when the model asks for one.
+_MOTIFS_ENABLED = _get_env_bool("MOTIFS_ENABLED", False)
 _LOCAL_ANALYZER_TEMPERATURE = _get_env_float("LOCAL_ANALYZER_TEMPERATURE", 0.6)
 _LOCAL_ANALYZER_TOP_P = _get_env_float("LOCAL_ANALYZER_TOP_P", 0.95)
 _LOCAL_ANALYZER_TOP_K = _get_env_int("LOCAL_ANALYZER_TOP_K", 20)
@@ -360,6 +364,8 @@ def _build_system_prompt(*, tool_output_tokens: int) -> str:
     prompt += STRUCTURED_RUNTIME_STATE_ADDENDUM
     if _FRAMING_ENABLED:
         prompt += FRAMING_HYPOTHESES_ADDENDUM
+    if _MOTIFS_ENABLED:
+        prompt += motifs.summary_block()
     if current_grid_image_enabled():
         prompt += MULTIMODAL_CONTEXT_ADDENDUM
     prompt += VISUAL_GAME_ADDENDUM
@@ -973,6 +979,7 @@ class ToolAgent:
         self._hypotheses = HypothesisSet()
         self._framing_runs = 0
         self._framed_level: int | None = None
+        self._motif_lookups: list[str] = []
 
     def _headers(self) -> dict[str, str]:
         api_key = (
@@ -1004,6 +1011,7 @@ class ToolAgent:
             self._hypotheses.reset()
             self._framing_runs = 0
             self._framed_level = None
+            self._motif_lookups = []
 
     @property
     def total_tokens(self) -> int:
@@ -1623,6 +1631,12 @@ class ToolAgent:
             # advertise them.
             if _FRAMING_ENABLED:
                 state["hypotheses"] = self._hypotheses.payload()
+            # ~14KB of JSON handed to a subprocess, not to the model. Nothing
+            # here reaches the context window until the model prints part of
+            # it, so the whole catalog can ride along and only the entry that
+            # gets looked up is ever paid for.
+            if _MOTIFS_ENABLED:
+                state["motif_catalog"] = motifs.catalog()
             return state
 
         terminal_action_result: dict[str, Any] | None = None
@@ -1702,6 +1716,13 @@ class ToolAgent:
             sandbox_result.get("verdicts") or [], step=step
         ):
             self._notes.append(line)
+        # Stdout, not notes: whether the model reached for the vocabulary is a
+        # fact about the run, not something the model should be reading back to
+        # itself. Without it, a motif list nobody consults and one that
+        # actively misleads produce the same score and the same silence.
+        for slug in sandbox_result.get("motif_lookups") or []:
+            self._motif_lookups.append(str(slug))
+            print(f"[motif] step={step} lookup={slug}", flush=True)
         payload: dict[str, Any] = {"tool": "python"}
         rendered_stdout = str(sandbox_result.get("stdout", "") or "")
         rendered_error = str(sandbox_result.get("error", "") or "")

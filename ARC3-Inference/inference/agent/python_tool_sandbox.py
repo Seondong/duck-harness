@@ -320,6 +320,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
         action_results = []
         new_notes = []
         verdicts = []
+        motif_lookups = []
         stdout = io.StringIO()
         runtime_globals = {
             "__builtins__": {
@@ -409,6 +410,37 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
             runtime_globals["kill"] = _verdict("dead")
             runtime_globals["confirm"] = _verdict("alive")
 
+        # The motif catalog rides in the state rather than the prompt: the
+        # names are in the system prompt, the entries are here, and only what
+        # gets printed costs context. Lookups are recorded so a run can say
+        # whether the vocabulary was used at all -- an unused feature and a
+        # harmful one look identical in the score.
+        motif_catalog = list((initial.get("state") or {}).get("motif_catalog") or [])
+        if motif_catalog:
+            def _motifs():
+                return [str(m.get("slug", "")) for m in motif_catalog if m.get("slug")]
+
+            def _motif(name):
+                wanted = str(name or "").strip().lower().replace("_", "-").replace(" ", "-")
+                for entry in motif_catalog:
+                    if str(entry.get("slug", "")).lower() != wanted:
+                        continue
+                    motif_lookups.append(wanted)
+                    found = {k: v for k, v in entry.items() if k != "has_detail"}
+                    if not entry.get("has_detail"):
+                        found["note"] = (
+                            "Summary only -- no detailed entry was written for this motif."
+                        )
+                    return found
+                motif_lookups.append(f"{wanted}?")
+                return {
+                    "error": f"no motif named {wanted!r}",
+                    "available": _motifs(),
+                }
+
+            runtime_globals["motifs"] = _motifs
+            runtime_globals["motif"] = _motif
+
         _refresh_state(initial.get("state") or {})
 
         try:
@@ -423,6 +455,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "action_results": _json_safe(action_results),
                     "notes": _json_safe(new_notes),
                     "verdicts": _json_safe(verdicts),
+                    "motif_lookups": _json_safe(motif_lookups),
                 }
             )
         except Exception as exc:
@@ -434,6 +467,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "action_results": _json_safe(action_results),
                     "notes": _json_safe(new_notes),
                     "verdicts": _json_safe(verdicts),
+                    "motif_lookups": _json_safe(motif_lookups),
                 }
             )
 
@@ -616,6 +650,9 @@ def run_sandboxed_python(
                     "verdicts": [
                         item for item in (message.get("verdicts") or [])
                         if isinstance(item, dict)
+                    ],
+                    "motif_lookups": [
+                        str(item) for item in (message.get("motif_lookups") or [])
                     ],
                 }
 

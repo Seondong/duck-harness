@@ -169,6 +169,11 @@ MULTIMODAL_UPSCALE ?= $(shell $(CONFIG_VALUE) multimodal.upscale 16)
 FRAMING_ENABLED ?= 0
 FRAMING_MAX_PER_PASS ?= 6
 
+# Motif vocabulary: ~440 tokens of shape names in the system prompt, with the
+# per-motif detail fetched from Python on demand. Off until a run is dedicated
+# to measuring it.
+MOTIFS_ENABLED ?= 0
+
 CHAT_BASE_URL ?= $(shell $(CONFIG_VALUE) chat.base_url $(LOCAL_ANALYZER_BASE_URL))
 CHAT_PROVIDER ?= $(shell $(CONFIG_VALUE) chat.provider $(LOCAL_ANALYZER_PROVIDER))
 CHAT_MODEL ?= auto
@@ -219,6 +224,7 @@ export MULTIMODAL_CONTEXT
 export MULTIMODAL_UPSCALE
 export FRAMING_ENABLED
 export FRAMING_MAX_PER_PASS
+export MOTIFS_ENABLED
 export CHAT_PROVIDER
 export OPENROUTER_API_KEY
 export OPENAI_API_KEY

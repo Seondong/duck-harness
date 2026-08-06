@@ -126,6 +126,9 @@ def duck_kaggle_setup_command(config: DuckKaggleVllmConfig | None = None) -> str
         # can be read against it.
         "__FRAMING_ENABLED__": repr(os.environ.get("FRAMING_ENABLED", "0")),
         "__FRAMING_MAX_PER_PASS__": repr(os.environ.get("FRAMING_MAX_PER_PASS", "6")),
+        # The motif vocabulary. Off by default: it is an untested intervention
+        # and the run that turns it on should be the run that says so.
+        "__MOTIFS_ENABLED__": repr(os.environ.get("MOTIFS_ENABLED", "0")),
         "__VLLM_TENSOR_PARALLEL_SIZE__": repr(int(cfg.tensor_parallel_size)),
         "__WHEELHOUSE_STAMP_TEXT__": repr(cfg.wheelhouse_stamp_text),
     }
@@ -400,6 +403,7 @@ setup_env = {
     'MULTIMODAL_UPSCALE': __MULTIMODAL_UPSCALE__,
     'FRAMING_ENABLED': __FRAMING_ENABLED__,
     'FRAMING_MAX_PER_PASS': __FRAMING_MAX_PER_PASS__,
+    'MOTIFS_ENABLED': __MOTIFS_ENABLED__,
 }
 setup_env_path = Path(os.environ['TAAF_KAGGLE_SETUP_ENV'])
 existing_setup_env = {}

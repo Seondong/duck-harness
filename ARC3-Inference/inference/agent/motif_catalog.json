@@ -1,0 +1,372 @@
+{
+ "motifs": [
+  {
+   "slug": "navigation",
+   "summary": "Move an agent through a grid, maze or corridor to reach a target square.",
+   "features": [
+    "A large traversable region of uniform value, divided by walls of a different value",
+    "A small compound object that reads as the agent (a cross, a diamond)",
+    "Four actions available, consistent with up/down/left/right",
+    "A reference pattern or target position held in a separate region"
+   ],
+   "probes": [
+    "Try ACTION1-4 once each and confirm which direction each one moves",
+    "Move into a wall and see whether it blocks, reflects, or passes through"
+   ],
+   "action_semantics": [
+    "ACTION1=UP, ACTION2=DOWN, ACTION3=LEFT, ACTION4=RIGHT",
+    "ACTION5/6, when present, are a special interaction: grab, drop, submit"
+   ],
+   "win_condition": "The agent reaches the target square, or reproduces a reference pattern",
+   "has_detail": true
+  },
+  {
+   "slug": "sokoban",
+   "summary": "Push blocks (never pull) onto goal positions.",
+   "features": [
+    "Two or more blocks drawn as a border with contents inside",
+    "Movable blocks that are distinct from the agent or cursor",
+    "A wide movement area with corridors formed by walls",
+    "A reference image showing where the blocks are supposed to end up"
+   ],
+   "probes": [
+    "Walk the agent into a block and see whether contact pushes it",
+    "Push a block into a wall and watch what the collision does"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move the agent; contact with a block pushes it",
+    "ACTION5/6: grab / drop, or submit"
+   ],
+   "win_condition": "Every block sits exactly on its target position",
+   "has_detail": true
+  },
+  {
+   "slug": "threading",
+   "summary": "Extend a trail or assemble parts, in order, into a target shape.",
+   "features": [
+    "A diamond or arrow-shaped agent with a horizontal tail extending from it",
+    "A vertical rail the agent moves along to change its height",
+    "A reference image of the finished shape, with blocks already threaded on the tail",
+    "Several independent blocks anchored against one wall"
+   ],
+   "probes": [
+    "ACTION1/2 for vertical movement along the rail",
+    "ACTION3/4 to extend and retract the tail",
+    "Extend the tail toward a block and watch the interaction"
+   ],
+   "action_semantics": [
+    "ACTION1=UP and ACTION2=DOWN along the rail",
+    "ACTION3=RETRACT, ACTION4=EXTEND the tail"
+   ],
+   "win_condition": "Every block is threaded onto the tail in the order the reference shows",
+   "has_detail": true
+  },
+  {
+   "slug": "paint",
+   "summary": "Move a cursor or brush and change cell values to reproduce a reference pattern.",
+   "features": [
+    "A large single-valued canvas region",
+    "A small cursor or brush object sitting on the canvas",
+    "A separate reference pattern, usually above or below the canvas",
+    "An action that paints rather than moves"
+   ],
+   "probes": [
+    "Move the cursor with ACTION3/4 and confirm it is the cursor moving, not the canvas",
+    "Paint once at the current position",
+    "Move away after painting and check the change persisted"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move the cursor",
+    "ACTION6: paint (change the cell value)",
+    "ACTION7: erase or undo"
+   ],
+   "win_condition": "The canvas matches the reference pattern exactly",
+   "has_detail": true
+  },
+  {
+   "slug": "toggle",
+   "summary": "Flip cells or blocks between two values, or around a cycle, to reach a target pattern.",
+   "features": [
+    "A grid alternating between two values",
+    "Often only one or two actions available",
+    "A cursor that moves over the grid, toggling on move or on a dedicated action"
+   ],
+   "probes": [
+    "Toggle once and see which cell changed -- one, a row, a cross, a region",
+    "Toggle the same cell twice: returning to the original state means binary, a third state means a cycle"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move the cursor, where movement exists",
+    "ACTION6: toggle",
+    "ACTION7: toggle backwards, or submit"
+   ],
+   "win_condition": "Every cell matches the target state -- a checkerboard, one colour, or a reference pattern",
+   "has_detail": true
+  },
+  {
+   "slug": "pattern-completion",
+   "summary": "Infer the rule behind a sequence of colours or values and fill the gap.",
+   "features": [
+    "Colour blocks arranged as sequences along the edges of the frame",
+    "Often only one action available, so the game is read-then-submit",
+    "A reference region listing the available values",
+    "Markers at the frame corners"
+   ],
+   "probes": [
+    "Analyse the pattern completely before acting -- reading costs no actions and this is where that matters most",
+    "Then one action, to learn whether it submits or cycles a value"
+   ],
+   "action_semantics": [
+    "ACTION6: submit, or cycle a colour"
+   ],
+   "win_condition": "The sequence rule holds on every edge",
+   "has_detail": true
+  },
+  {
+   "slug": "colour-assignment",
+   "summary": "Assign the right colour to each of N slots; a reference image shows the order.",
+   "features": [
+    "N empty slots in a row",
+    "A palette of available colours, usually above",
+    "A reference showing the correct order, usually below",
+    "About three actions, and notably no directional movement"
+   ],
+   "probes": [
+    "Cycle a slot's colour and record the cycle order",
+    "Find the action that moves between slots",
+    "Find the action that submits"
+   ],
+   "action_semantics": [
+    "ACTION5: move to the next slot",
+    "ACTION6: cycle the colour forward",
+    "ACTION7: submit, or cycle backward"
+   ],
+   "win_condition": "Every slot's colour matches the reference order",
+   "has_detail": true
+  },
+  {
+   "slug": "sorting",
+   "summary": "Rearrange blocks or tiles into a target order or position -- sliding, pick-and-place, swap.",
+   "features": [
+    "Many patterned blocks laid out as a grid",
+    "A separate reference pattern showing the target order",
+    "An agent that reads as an empty container the same size as one block",
+    "Four-direction movement"
+   ],
+   "probes": [
+    "Move the agent and check the step size -- one cell, or one block",
+    "Move onto a block and see whether it picks up, swaps, or pushes"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move the agent",
+    "Landing on a block may pick it up or swap automatically"
+   ],
+   "win_condition": "The blocks are arranged in the reference order",
+   "has_detail": true
+  },
+  {
+   "slug": "symmetry",
+   "summary": "Complete a mirror or rotational symmetry, or make two regions match.",
+   "features": [
+    "The board splits cleanly left/right or top/bottom into two halves of different value",
+    "The two halves are similar but not identical",
+    "A wall may sit on the dividing axis",
+    "Markers placed symmetrically on both sides"
+   ],
+   "probes": [
+    "Move once and check whether one side changed or both did",
+    "Look for an action that flips or mirrors rather than moves"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move, or edit a boundary",
+    "ACTION5: flip or rotate",
+    "ACTION6: submit"
+   ],
+   "win_condition": "The two regions are exact mirrors across the dividing axis",
+   "has_detail": true
+  },
+  {
+   "slug": "click-semantics",
+   "summary": "Move a crosshair or cursor and select a marker at a specific coordinate.",
+   "features": [
+    "A large cross spanning the whole board",
+    "A cursor marker at the intersection",
+    "Small markers scattered around the grid",
+    "Five actions: four directions plus a click"
+   ],
+   "probes": [
+    "Move once and check whether the whole cross moves or only the intersection",
+    "Click both on and off a marker, and compare"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move the cross",
+    "ACTION5: click / select / execute"
+   ],
+   "win_condition": "Every target marker has been clicked, possibly in a required order",
+   "has_detail": true
+  },
+  {
+   "slug": "projectile",
+   "summary": "An object is launched, travels, and bounces off walls toward a target.",
+   "features": [
+    "A diagonal trail extending from the agent",
+    "Often a single action, so the only choice is when to press it",
+    "Large blob-shaped obstacles",
+    "A target position, often at the far edge"
+   ],
+   "probes": [
+    "One action: does the agent move, or does its direction change",
+    "Several in a row: read the trajectory and find the reflection rule"
+   ],
+   "action_semantics": [
+    "ACTION6: advance one step, change direction, or launch"
+   ],
+   "win_condition": "The agent arrives exactly on the target",
+   "has_detail": true
+  },
+  {
+   "slug": "gravity",
+   "summary": "Blocks fall; move or rotate them to stack or assemble at the bottom.",
+   "features": [
+    "L-shaped or T-shaped pieces",
+    "A floor region at the bottom",
+    "A small piece hanging or floating near the top",
+    "Around six actions: left, right, two rotations, and one or two drops"
+   ],
+   "probes": [
+    "ACTION1/2 for horizontal movement",
+    "ACTION3/4 for rotation -- watch the piece's shape change, not its position",
+    "Test a drop last: a hard drop is usually irreversible, so it is the expensive probe"
+   ],
+   "action_semantics": [
+    "ACTION1=LEFT, ACTION2=RIGHT",
+    "ACTION3=ROTATE_CW, ACTION4=ROTATE_CCW",
+    "ACTION5=HARD_DROP, ACTION6=SOFT_DROP"
+   ],
+   "win_condition": "Pieces are placed with no gaps, or some stated arrangement is reached",
+   "has_detail": true
+  },
+  {
+   "slug": "sliding",
+   "summary": "Objects slide along a diagonal, or two actions pick between binary directions.",
+   "features": [
+    "Diagonal markers forming a 45-degree path",
+    "A ring-shaped object with a hollow centre",
+    "Only two actions available",
+    "A start point (the object) and an end point (the target marker)"
+   ],
+   "probes": [
+    "One of each action, and compare direction and distance",
+    "Alternate them to see how flexible the path is"
+   ],
+   "action_semantics": [
+    "One action per diagonal direction -- e.g. down-left and down-right"
+   ],
+   "win_condition": "The object arrives at the target along the diagonal path",
+   "has_detail": true
+  },
+  {
+   "slug": "key-door",
+   "summary": "Meeting a condition opens a wall or activates a new route.",
+   "has_detail": false
+  },
+  {
+   "slug": "maze",
+   "summary": "Find a route through impassable walls and passable corridors.",
+   "features": [
+    "Walls and corridors alternating inside a large rectangular structure",
+    "A reference region showing the agent's shape",
+    "A visible track marking the traversable route",
+    "Five actions: four directions plus one special"
+   ],
+   "probes": [
+    "Move in each direction and confirm the mapping",
+    "Walk into a wall and observe the response"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move in four directions",
+    "ACTION5: grab / drop, or another special interaction"
+   ],
+   "win_condition": "The agent reaches the maze exit",
+   "has_detail": true
+  },
+  {
+   "slug": "reflect",
+   "summary": "Mirror an object or pattern across an axis to place it symmetrically.",
+   "has_detail": false
+  },
+  {
+   "slug": "merge-split",
+   "summary": "Combine or divide blocks to make a new shape.",
+   "has_detail": false
+  },
+  {
+   "slug": "snake",
+   "summary": "The agent leaves a trail behind it as it moves; the trail's shape is what solves the level.",
+   "has_detail": false
+  },
+  {
+   "slug": "collection",
+   "summary": "Move around the map gathering scattered items or markers.",
+   "features": [
+    "A mostly empty background with a few scattered objects",
+    "A frame structure at the centre that displays what has been collected",
+    "An agent standing apart from the objects",
+    "Five actions: four directions plus collect or deliver"
+   ],
+   "probes": [
+    "Move the agent toward an object",
+    "On contact, try the fifth action and see whether it picks up or delivers"
+   ],
+   "action_semantics": [
+    "ACTION1-4: move the agent",
+    "ACTION5: grab, or deliver"
+   ],
+   "win_condition": "Every item has been collected and delivered to the centre",
+   "has_detail": true
+  },
+  {
+   "slug": "sequence-input",
+   "summary": "The order of actions *is* the answer; the level clears on the correct sequence.",
+   "has_detail": false
+  },
+  {
+   "slug": "rotation",
+   "summary": "Circular-shift rows or columns, or rotate a block in 90-degree steps, to line things up.",
+   "features": [
+    "A 3x3 block grid",
+    "A cursor and a target marker at opposite diagonal corners",
+    "Four actions, plausibly row and column rotations",
+    "Often no reference pattern -- the goal is a rule, not a picture"
+   ],
+   "probes": [
+    "One action, then ask whether the cursor moved or a whole row/column shifted",
+    "Read the changed cells to find the axis and the direction"
+   ],
+   "action_semantics": [
+    "ACTION1/2: rotate a row left/right, or move up/down",
+    "ACTION3/4: rotate a column up/down, or move left/right"
+   ],
+   "win_condition": "The grid reaches a checkerboard or some other stated arrangement",
+   "has_detail": true
+  },
+  {
+   "slug": "piece-insertion",
+   "summary": "Fit a shaped block exactly into a gap; size and shape matching is the point.",
+   "features": [
+    "A large object with a hole in it",
+    "A separate block exactly the size of that hole",
+    "The size match between hole and block is visually obvious"
+   ],
+   "probes": [
+    "Find which directions the block can move",
+    "Move it toward the hole and learn the insertion mechanic"
+   ],
+   "action_semantics": [
+    "Often only two movement directions are available"
+   ],
+   "win_condition": "The block sits exactly inside the hole",
+   "has_detail": true
+  }
+ ]
+}
