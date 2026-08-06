@@ -412,12 +412,18 @@ kaggle-duck: EXCLUDE_GAME_TAGS =
 kaggle-duck: MODEL = local
 kaggle-duck: RUN_NAME = duck-harness-kaggle
 kaggle-duck: MAX_RUNTIME_MINUTES = 132
-# 132 min is what the 1.16 run gave every game, kept as the base so this stays
-# an addition to that configuration rather than a replacement of it. A game
-# that cleared a level in the last 45 min keeps playing, to 300 min at most;
-# the 420 min global guard exists because a kernel that overruns produces no
-# submission at all.
-kaggle-duck: LEVEL_EXTENSION_MINUTES = 45
+# Extension off. Giving a moving game more time was argued from the score
+# formula -- an uncleared level's actions score nothing, so depth looked free
+# -- but that argument holds the action count fixed and time does not. More
+# time also buys more actions on the levels the agent *does* clear, and those
+# are penalised by the square. The two runs carrying this policy are the two
+# worst we have (0.78, 0.70 against 1.16 without it), so it comes out until
+# something reproduces 1.16 and gives the comparison a floor to stand on.
+#
+# Zero here restores the flat per-game budget exactly. The ceiling is inert
+# without an extension to cap; the global guard stays because a kernel that
+# overruns produces no submission at all.
+kaggle-duck: LEVEL_EXTENSION_MINUTES =
 kaggle-duck: MAX_RUNTIME_CEILING_MINUTES = 300
 kaggle-duck: GLOBAL_RUNTIME_MINUTES = 420
 kaggle-duck: MAX_EXPERIMENT_RUNTIME_MINUTES = 540
