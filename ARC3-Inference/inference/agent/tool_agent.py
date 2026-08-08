@@ -18,6 +18,8 @@ from inference.agent.prompts import (
     COMPACT_TOOL_SESSION_ADDENDUM,
     GAME_OVERVIEW_ADDENDUM,
     PYTHON_ADDENDUM,
+    ACTION_ECONOMY_ADDENDUM,
+    PERSISTENT_CODE_ADDENDUM,
     FRAMING_HYPOTHESES_ADDENDUM,
     STRUCTURED_RUNTIME_STATE_ADDENDUM,
     MULTIMODAL_CONTEXT_ADDENDUM,
@@ -153,6 +155,14 @@ _FRAMING_MAX_PER_PASS = _get_env_int("FRAMING_MAX_PER_PASS", 6)
 # The motif vocabulary: ~440 tokens of names in the system prompt, with the
 # per-motif detail fetched from Python only when the model asks for one.
 _MOTIFS_ENABLED = _get_env_bool("MOTIFS_ENABLED", False)
+# The benchmark's cost model, stated to the model. On by default: every line of
+# it is true and every line pushes toward fewer environment actions, which is
+# the only quantity the score is computed from.
+_ACTION_ECONOMY_ENABLED = _get_env_bool("ACTION_ECONOMY", True)
+# Code that survives the turn. Off by default: it is the enabler for planning
+# against an executable world model, and the run that turns it on should be the
+# run that measures it.
+_PERSIST_CODE_ENABLED = _get_env_bool("PERSIST_CODE", False)
 _LOCAL_ANALYZER_TEMPERATURE = _get_env_float("LOCAL_ANALYZER_TEMPERATURE", 0.6)
 _LOCAL_ANALYZER_TOP_P = _get_env_float("LOCAL_ANALYZER_TOP_P", 0.95)
 _LOCAL_ANALYZER_TOP_K = _get_env_int("LOCAL_ANALYZER_TOP_K", 20)
@@ -361,11 +371,15 @@ def _format_model_response_meta(
 def _build_system_prompt(*, tool_output_tokens: int) -> str:
     prompt = "You are a coding agent solving a grid-based puzzle game."
     prompt += GAME_OVERVIEW_ADDENDUM
+    if _ACTION_ECONOMY_ENABLED:
+        prompt += ACTION_ECONOMY_ADDENDUM
     prompt += STRUCTURED_RUNTIME_STATE_ADDENDUM
     if _FRAMING_ENABLED:
         prompt += FRAMING_HYPOTHESES_ADDENDUM
     if _MOTIFS_ENABLED:
         prompt += motifs.summary_block()
+    if _PERSIST_CODE_ENABLED:
+        prompt += PERSISTENT_CODE_ADDENDUM
     if current_grid_image_enabled():
         prompt += MULTIMODAL_CONTEXT_ADDENDUM
     prompt += VISUAL_GAME_ADDENDUM
@@ -980,6 +994,7 @@ class ToolAgent:
         self._framing_runs = 0
         self._framed_level: int | None = None
         self._motif_lookups: list[str] = []
+        self._remembered_code: dict[str, str] = {}
 
     def _headers(self) -> dict[str, str]:
         api_key = (
@@ -1012,6 +1027,7 @@ class ToolAgent:
             self._framing_runs = 0
             self._framed_level = None
             self._motif_lookups = []
+            self._remembered_code = {}
 
     @property
     def total_tokens(self) -> int:
@@ -1637,6 +1653,8 @@ class ToolAgent:
             # gets looked up is ever paid for.
             if _MOTIFS_ENABLED:
                 state["motif_catalog"] = motifs.catalog()
+            if _PERSIST_CODE_ENABLED:
+                state["remembered_code"] = dict(self._remembered_code)
             return state
 
         terminal_action_result: dict[str, Any] | None = None
@@ -1723,6 +1741,16 @@ class ToolAgent:
         for slug in sandbox_result.get("motif_lookups") or []:
             self._motif_lookups.append(str(slug))
             print(f"[motif] step={step} lookup={slug}", flush=True)
+        # None means forget; anything else replaces. Applied here rather than
+        # in the child because the child is a fresh process every call and has
+        # nowhere to keep it.
+        for name, source in (sandbox_result.get("remembered_edits") or {}).items():
+            if source is None:
+                self._remembered_code.pop(str(name), None)
+                print(f"[code] step={step} forgot={name}", flush=True)
+            else:
+                self._remembered_code[str(name)] = str(source)
+                print(f"[code] step={step} remembered={name} chars={len(str(source))}", flush=True)
         payload: dict[str, Any] = {"tool": "python"}
         rendered_stdout = str(sandbox_result.get("stdout", "") or "")
         rendered_error = str(sandbox_result.get("error", "") or "")

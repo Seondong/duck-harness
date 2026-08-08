@@ -19,6 +19,55 @@ GAME_OVERVIEW_ADDENDUM = (
     f"- Color legend: {ARC_COLOR_LEGEND}.\n"
 )
 
+# The benchmark's own cost model, which the prompt never stated. "Optimize for
+# as few actions as possible" is advice; this is the arithmetic behind it, and
+# the difference matters because two of the facts here invert what the model
+# would otherwise assume -- that thinking is rationed, and that a level can be
+# ground out given enough attempts.
+ACTION_ECONOMY_ADDENDUM = (
+    "\n\nWhat an action costs:\n"
+    "- Your score on a level you clear is (H/A) squared, where A is the actions you spent on that "
+    "level and H is what a human needed. Twice the human count scores 25%, three times scores 11%. "
+    "Nothing is awarded above 100%, so there is no prize for beating H and a steep price for missing it.\n"
+    "- H comes from first-time players who were given no rules either, so it already includes the "
+    "actions they spent working out what the game was. You are not racing someone who knew the answer.\n"
+    "- You are cut off at five times H on a level. Past that the level scores zero however close you "
+    "were, and every later level is never reached. Thrashing on a board you cannot read is the most "
+    "expensive thing you can do, and it is expensive twice: it forfeits this level and all the rest.\n"
+    "- `actions_this_level` is how many you have already spent here. There is no way to see H, so "
+    "treat it as roughly what an attentive first-time player would need and stay well inside it.\n"
+    "- Reasoning, Python, and tool calls are NOT actions and are NOT counted. Only `action(...)` "
+    "touches the environment. Thinking, computing, simulating and searching cost your score "
+    "nothing at all, so reasoning that saves even one action is worth doing.\n"
+    "- So derive the move before you make it. Write the search, run it, check it against what you "
+    "have already recorded, and only then act.\n"
+    "- The one limit on thinking is the clock: the run ends after a fixed wall-clock time whether "
+    "or not you are finished, and a plan you never execute also scores zero. Deliberate freely, "
+    "then commit -- once the next move is clear, take it.\n"
+    "- RESET and undo are actions and cost exactly what any other action costs. Restarting a level "
+    "does not restore the budget you already spent on it.\n"
+    "- Later levels are worth more than earlier ones, but you only reach them by not burning the "
+    "budget here.\n"
+)
+
+# Gated with the feature, not shipped alongside it. A prompt that documents a
+# mechanism the runtime does not provide is the mistake that made one whole
+# submission unreadable.
+PERSISTENT_CODE_ADDENDUM = (
+    "\n\nCode that outlives the turn:\n"
+    "- `remember(name, source)` stores a Python source string and runs it now; every later turn "
+    "re-runs it before your code, so functions and constants defined in it are already there. "
+    "`forget(name)` drops one, `remembered` lists the names, and `remembered_errors` reports any "
+    "stored source that failed to run this turn.\n"
+    "- Use it for the world model: a function that takes a state and an action and returns the "
+    "predicted next state, plus whatever helpers reading the board needs. Building it costs no "
+    "actions, and once it is right you can search inside it instead of probing the environment.\n"
+    "- Keep it honest. Predict the next frame before you act, compare the prediction with what "
+    "actually happened, and when they differ fix the stored source rather than working around it. "
+    "A model you have not checked is a guess that will spend actions on your behalf.\n"
+    "- Store source, not results: a board that has moved on is worse than no board at all.\n"
+)
+
 VISUAL_GAME_ADDENDUM = (
     "\n\nVisual-game guidance:\n"
     "- Treat each board as a scene with objects, blockers, targets, adjacency, containment, motion, and symmetry.\n"

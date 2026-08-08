@@ -174,6 +174,12 @@ FRAMING_MAX_PER_PASS ?= 6
 # to measuring it.
 MOTIFS_ENABLED ?= 0
 
+# The scoring rules, stated to the model: (H/A)^2 per cleared level, cutoff at
+# 5H, reasoning unmetered. ~400 tokens, and every line argues for fewer actions.
+ACTION_ECONOMY ?= 1
+# Code that survives the turn. Off until a run is dedicated to measuring it.
+PERSIST_CODE ?= 0
+
 CHAT_BASE_URL ?= $(shell $(CONFIG_VALUE) chat.base_url $(LOCAL_ANALYZER_BASE_URL))
 CHAT_PROVIDER ?= $(shell $(CONFIG_VALUE) chat.provider $(LOCAL_ANALYZER_PROVIDER))
 CHAT_MODEL ?= auto
@@ -225,6 +231,8 @@ export MULTIMODAL_UPSCALE
 export FRAMING_ENABLED
 export FRAMING_MAX_PER_PASS
 export MOTIFS_ENABLED
+export ACTION_ECONOMY
+export PERSIST_CODE
 export CHAT_PROVIDER
 export OPENROUTER_API_KEY
 export OPENAI_API_KEY

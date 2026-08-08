@@ -321,6 +321,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
         new_notes = []
         verdicts = []
         motif_lookups = []
+        remembered_edits_holder = {}
         stdout = io.StringIO()
         runtime_globals = {
             "__builtins__": {
@@ -355,6 +356,20 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
             runtime_globals["last_action"] = last_transition.action if last_transition is not None else None
             runtime_globals["valid_actions"] = [str(item) for item in state_payload.get("valid_actions", [])]
             runtime_globals["last_action_result"] = action_result
+            # The level's own action count, which is the number the score is
+            # computed from. `current_frame.step` is the whole game and says
+            # nothing about how much of *this* level's budget is gone.
+            level_now = getattr(current_frame, "level", None)
+            runtime_globals["actions_this_level"] = (
+                sum(
+                    1
+                    for entry in history
+                    if getattr(entry, "action", "")
+                    and getattr(entry.frame, "level", None) == level_now
+                )
+                if level_now is not None
+                else 0
+            )
 
         def action(actions):
             normalized_actions = _normalize_actions(actions)
@@ -441,6 +456,49 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
             runtime_globals["motifs"] = _motifs
             runtime_globals["motif"] = _motif
 
+        # Code that outlives the turn. Every python call is a fresh
+        # subprocess, so a world model written in one turn evaporates before
+        # the next -- the model can only carry prose forward in notes and has
+        # to re-derive its dynamics from scratch each time. Sources stored here
+        # are re-executed at the top of every later call, which is what makes
+        # an executable world model, and therefore planning against one,
+        # possible at all.
+        remembered_source = dict((initial.get("state") or {}).get("remembered_code") or {})
+        remembered_edits = remembered_edits_holder
+        remembered_errors = []
+        if (initial.get("state") or {}).get("remembered_code") is not None:
+            def remember(name, source):
+                key = str(name).strip()
+                if not key:
+                    raise ValueError("remember() needs a non-empty name")
+                remembered_source[key] = str(source)
+                remembered_edits[key] = str(source)
+                try:
+                    exec(compile(str(source), f"<remembered:{key}>", "exec"), runtime_globals, runtime_globals)
+                except Exception as exc:
+                    # Kept anyway: the model asked for it, and silently
+                    # dropping it would leave it calling a function that is
+                    # not there with no idea why.
+                    return {"stored": key, "error": f"{type(exc).__name__}: {exc}"}
+                return {"stored": key}
+
+            def forget(name):
+                key = str(name).strip()
+                remembered_source.pop(key, None)
+                remembered_edits[key] = None
+                return {"forgot": key}
+
+            for key, source in list(remembered_source.items()):
+                try:
+                    exec(compile(str(source), f"<remembered:{key}>", "exec"), runtime_globals, runtime_globals)
+                except Exception as exc:
+                    remembered_errors.append(f"{key}: {type(exc).__name__}: {exc}")
+
+            runtime_globals["remember"] = remember
+            runtime_globals["forget"] = forget
+            runtime_globals["remembered"] = sorted(remembered_source)
+            runtime_globals["remembered_errors"] = remembered_errors
+
         _refresh_state(initial.get("state") or {})
 
         try:
@@ -456,6 +514,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "notes": _json_safe(new_notes),
                     "verdicts": _json_safe(verdicts),
                     "motif_lookups": _json_safe(motif_lookups),
+                    "remembered_edits": _json_safe(remembered_edits_holder),
                 }
             )
         except Exception as exc:
@@ -468,6 +527,7 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                     "notes": _json_safe(new_notes),
                     "verdicts": _json_safe(verdicts),
                     "motif_lookups": _json_safe(motif_lookups),
+                    "remembered_edits": _json_safe(remembered_edits_holder),
                 }
             )
 
@@ -654,6 +714,11 @@ def run_sandboxed_python(
                     "motif_lookups": [
                         str(item) for item in (message.get("motif_lookups") or [])
                     ],
+                    "remembered_edits": (
+                        message.get("remembered_edits")
+                        if isinstance(message.get("remembered_edits"), dict)
+                        else {}
+                    ),
                 }
 
             _wait_for_process_exit(process)

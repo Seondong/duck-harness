@@ -129,6 +129,12 @@ def duck_kaggle_setup_command(config: DuckKaggleVllmConfig | None = None) -> str
         # The motif vocabulary. Off by default: it is an untested intervention
         # and the run that turns it on should be the run that says so.
         "__MOTIFS_ENABLED__": repr(os.environ.get("MOTIFS_ENABLED", "0")),
+        # The benchmark's own cost model. On: RHAE is (H/A)^2 with a hard
+        # cutoff at 5H and unmetered reasoning, and the prompt stated none of
+        # it. Every line pushes toward fewer environment actions, which is the
+        # only quantity the score is computed from.
+        "__ACTION_ECONOMY__": repr(os.environ.get("ACTION_ECONOMY", "1")),
+        "__PERSIST_CODE__": repr(os.environ.get("PERSIST_CODE", "0")),
         "__VLLM_TENSOR_PARALLEL_SIZE__": repr(int(cfg.tensor_parallel_size)),
         "__WHEELHOUSE_STAMP_TEXT__": repr(cfg.wheelhouse_stamp_text),
     }
@@ -404,6 +410,8 @@ setup_env = {
     'FRAMING_ENABLED': __FRAMING_ENABLED__,
     'FRAMING_MAX_PER_PASS': __FRAMING_MAX_PER_PASS__,
     'MOTIFS_ENABLED': __MOTIFS_ENABLED__,
+    'ACTION_ECONOMY': __ACTION_ECONOMY__,
+    'PERSIST_CODE': __PERSIST_CODE__,
 }
 setup_env_path = Path(os.environ['TAAF_KAGGLE_SETUP_ENV'])
 existing_setup_env = {}
