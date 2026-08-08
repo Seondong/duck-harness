@@ -359,17 +359,22 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
             # The level's own action count, which is the number the score is
             # computed from. `current_frame.step` is the whole game and says
             # nothing about how much of *this* level's budget is gone.
-            level_now = getattr(current_frame, "level", None)
-            runtime_globals["actions_this_level"] = (
-                sum(
-                    1
-                    for entry in history
-                    if getattr(entry, "action", "")
-                    and getattr(entry.frame, "level", None) == level_now
+            #
+            # Gated with the prompt block that documents it. A runtime surface
+            # that outlives its own feature flag is how a build stops being
+            # comparable to the one it was meant to replicate.
+            if (initial.get("state") or {}).get("action_economy"):
+                level_now = getattr(current_frame, "level", None)
+                runtime_globals["actions_this_level"] = (
+                    sum(
+                        1
+                        for entry in history
+                        if getattr(entry, "action", "")
+                        and getattr(entry.frame, "level", None) == level_now
+                    )
+                    if level_now is not None
+                    else 0
                 )
-                if level_now is not None
-                else 0
-            )
 
         # What each action has actually done, counted rather than recalled.
         #
@@ -417,7 +422,8 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                 entry["max_cells"] = cells[-1] if cells else 0
             return rows
 
-        runtime_globals["action_effects"] = action_effects
+        if (initial.get("state") or {}).get("action_economy"):
+            runtime_globals["action_effects"] = action_effects
 
         def action(actions):
             normalized_actions = _normalize_actions(actions)

@@ -74,7 +74,7 @@ def _sandbox(code: str, state: dict):
 
 def test_the_sandbox_hides_kill_and_confirm_when_the_state_omits_hypotheses():
     result = _sandbox(
-        "print([n for n in ('hypotheses', 'kill', 'confirm') if n in dir()])",
+        "g = dir()\nprint([n for n in ('hypotheses', 'kill', 'confirm') if n in g])",
         {"notes": []},
     )
     assert "[]" in str(result.get("stdout", "")), result

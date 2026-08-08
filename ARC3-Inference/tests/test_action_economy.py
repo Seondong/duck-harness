@@ -109,6 +109,7 @@ class TestActionsThisLevel:
             ],
             "valid_actions": ["UP"],
             "notes": [],
+            "action_economy": True,
         }
         result = _sandbox("print(actions_this_level)", state)
         assert "2" in str(result.get("stdout", "")), result
@@ -119,6 +120,7 @@ class TestActionsThisLevel:
             "history": [{"action": "", "frame": _frame(0, 1)}],
             "valid_actions": ["UP"],
             "notes": [],
+            "action_economy": True,
         }
         result = _sandbox("print(actions_this_level)", state)
         assert str(result.get("stdout", "")).strip() == "0", result
@@ -127,7 +129,7 @@ class TestActionsThisLevel:
 class TestRememberedCode:
     def test_the_helpers_are_absent_unless_the_parent_enables_them(self):
         result = _sandbox(
-            "print([n for n in ('remember', 'forget', 'remembered') if n in dir()])",
+            "g = dir()\nprint([n for n in ('remember', 'forget', 'remembered') if n in g])",
             {"notes": [], "current_frame": _frame(0, 1), "history": []},
         )
         assert "[]" in str(result.get("stdout", "")), result
@@ -297,6 +299,7 @@ class TestActionEffects:
             ],
             "valid_actions": ["UP", "LEFT"],
             "notes": [],
+            "action_economy": True,
         }
 
     def test_it_separates_a_real_move_from_a_hud_tick(self):
@@ -323,3 +326,34 @@ class TestActionEffects:
         on = _reloaded(monkeypatch, ACTION_ECONOMY="1")._build_system_prompt(tool_output_tokens=1024)
         assert "action_effects()" not in off
         assert "action_effects()" in on
+
+
+class TestTheFlagLeavesNoRuntimeTrace:
+    """A replication run is only a replication if the switched-off feature is
+    absent from the runtime too, not just from the prompt."""
+
+    def test_neither_global_exists_when_the_feature_is_not_declared(self):
+        result = _sandbox(
+            "g = dir()\nprint([n for n in ('actions_this_level', 'action_effects') if n in g])",
+            {
+                "current_frame": _frame(1, 1),
+                "history": [{"action": "UP", "frame": _frame(1, 1)}],
+                "valid_actions": ["UP"],
+                "notes": [],
+            },
+        )
+        assert "[]" in str(result.get("stdout", "")), result
+
+    def test_both_appear_when_it_is(self):
+        result = _sandbox(
+            "g = dir()\nprint(sorted(n for n in ('actions_this_level', 'action_effects') if n in g))",
+            {
+                "current_frame": _frame(1, 1),
+                "history": [{"action": "UP", "frame": _frame(1, 1)}],
+                "valid_actions": ["UP"],
+                "notes": [],
+                "action_economy": True,
+            },
+        )
+        assert "action_effects" in str(result.get("stdout", "")), result
+        assert "actions_this_level" in str(result.get("stdout", "")), result

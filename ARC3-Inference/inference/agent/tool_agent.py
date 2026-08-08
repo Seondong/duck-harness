@@ -1658,6 +1658,8 @@ class ToolAgent:
                 state["motif_catalog"] = motifs.catalog()
             if _PERSIST_CODE_ENABLED:
                 state["remembered_code"] = dict(self._remembered_code)
+            if _ACTION_ECONOMY_ENABLED:
+                state["action_economy"] = True
             return state
 
         terminal_action_result: dict[str, Any] | None = None

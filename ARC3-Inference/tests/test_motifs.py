@@ -94,7 +94,7 @@ class TestSandbox:
         )
 
     def test_the_helpers_are_absent_when_no_catalog_is_passed(self):
-        result = self._run("print([n for n in ('motif', 'motifs') if n in dir()])", {"notes": []})
+        result = self._run("g = dir()\nprint([n for n in ('motif', 'motifs') if n in g])", {"notes": []})
         assert "[]" in str(result.get("stdout", "")), result
 
     def test_a_lookup_returns_the_entry_and_is_recorded(self):
