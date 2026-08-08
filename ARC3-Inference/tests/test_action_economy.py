@@ -273,3 +273,53 @@ def test_the_code_store_evicts_oldest_first_when_it_fills(monkeypatch, tmp_path)
     assert sum(len(v) for v in agent._remembered_code.values()) <= 120
     assert "m0" not in agent._remembered_code
     assert "m3" in agent._remembered_code
+
+
+class TestActionEffects:
+    def _state(self):
+        def grid(mark):
+            g = [[0] * 8 for _ in range(8)]
+            g[mark % 8][0] = 1          # the "gameplay" cell that moves
+            g[0][7] = mark % 3          # a one-cell HUD tick, always changing
+            return g
+
+        def frame(step, mark):
+            return {"ascii": "", "step": step, "level": 1, "shape": [8, 8], "grid": grid(mark)}
+
+        return {
+            "current_frame": frame(4, 4),
+            "history": [
+                {"action": "", "frame": frame(0, 0)},
+                {"action": "UP", "frame": frame(1, 1)},      # moves the cell + HUD
+                {"action": "LEFT", "frame": frame(2, 1)},    # HUD only
+                {"action": "LEFT", "frame": frame(3, 1)},    # HUD only
+                {"action": "UP", "frame": frame(4, 4)},      # moves again
+            ],
+            "valid_actions": ["UP", "LEFT"],
+            "notes": [],
+        }
+
+    def test_it_separates_a_real_move_from_a_hud_tick(self):
+        result = _sandbox(
+            "e = action_effects()\nprint(e['UP']['median_cells'], e['LEFT']['median_cells'])",
+            self._state(),
+        )
+        up, left = str(result.get("stdout", "")).split()
+        assert int(up) > int(left), result
+        assert int(left) <= 1, result
+
+    def test_it_counts_tries_and_changes(self):
+        result = _sandbox(
+            "e = action_effects()\nprint(e['LEFT']['tried'], e['UP']['tried'])", self._state()
+        )
+        assert str(result.get("stdout", "")).strip() == "2 2", result
+
+    def test_an_action_never_taken_is_simply_absent(self):
+        result = _sandbox("print('DOWN' in action_effects())", self._state())
+        assert "False" in str(result.get("stdout", "")), result
+
+    def test_it_is_documented_only_with_the_economy_block(self, monkeypatch):
+        off = _reloaded(monkeypatch, ACTION_ECONOMY="0")._build_system_prompt(tool_output_tokens=1024)
+        on = _reloaded(monkeypatch, ACTION_ECONOMY="1")._build_system_prompt(tool_output_tokens=1024)
+        assert "action_effects()" not in off
+        assert "action_effects()" in on

@@ -371,6 +371,54 @@ _SANDBOX_BOOTSTRAP = textwrap.dedent(
                 else 0
             )
 
+        # What each action has actually done, counted rather than recalled.
+        #
+        # The strongest result on this benchmark so far came from a CNN that
+        # learned nothing except which actions change the frame, and it beat
+        # reasoning agents by an order of magnitude. This hands that signal
+        # over directly: a button that has never moved anything is the
+        # cheapest thing to stop paying for, and the score squares every press.
+        #
+        # `changed` counts transitions that altered any cell; `median_cells`
+        # separates a real move from a HUD tick, which also reports as changed
+        # but is one or two cells every single time.
+        def action_effects(level=None, window=None):
+            # Read through runtime_globals: current_frame and transitions are
+            # locals of _refresh_state, rebuilt every time the state changes,
+            # so closing over them would pin the values from before the first
+            # action(...) call.
+            frame_now = runtime_globals.get("current_frame")
+            wanted = frame_now.level if level is None and frame_now is not None else level
+            rows = {}
+            selected = [
+                t for t in (runtime_globals.get("transitions") or [])
+                if t.before_frame is not None and t.after_frame is not None
+                and (wanted is None or t.after_frame.level == wanted)
+            ]
+            if window:
+                selected = selected[-int(window):]
+            for t in selected:
+                before, after = t.before_frame._grid, t.after_frame._grid
+                changed = 0
+                for r in range(min(len(before), len(after))):
+                    row_a, row_b = before[r], after[r]
+                    for c in range(min(len(row_a), len(row_b))):
+                        if row_a[c] != row_b[c]:
+                            changed += 1
+                name = str(t.action).split("(")[0].strip() or "?"
+                entry = rows.setdefault(name, {"tried": 0, "changed": 0, "_cells": []})
+                entry["tried"] += 1
+                if changed:
+                    entry["changed"] += 1
+                    entry["_cells"].append(changed)
+            for entry in rows.values():
+                cells = sorted(entry.pop("_cells"))
+                entry["median_cells"] = cells[len(cells) // 2] if cells else 0
+                entry["max_cells"] = cells[-1] if cells else 0
+            return rows
+
+        runtime_globals["action_effects"] = action_effects
+
         def action(actions):
             normalized_actions = _normalize_actions(actions)
             _send({"type": "action", "actions": normalized_actions})

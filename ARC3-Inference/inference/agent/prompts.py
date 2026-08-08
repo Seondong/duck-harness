@@ -48,6 +48,10 @@ ACTION_ECONOMY_ADDENDUM = (
     "does not restore the budget you already spent on it.\n"
     "- Later levels are worth more than earlier ones, but you only reach them by not burning the "
     "budget here.\n"
+    "- `action_effects()` counts what each action has actually done on this level: how often it was "
+    "tried, how often anything changed, and the median cells it moved. An action that has never "
+    "changed the board is the cheapest thing to stop paying for; one that always moves the same "
+    "one or two cells is a HUD tick, not a move. Check it before you probe again.\n"
 )
 
 # Gated with the feature, not shipped alongside it. A prompt that documents a
