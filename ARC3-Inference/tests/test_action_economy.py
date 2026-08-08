@@ -250,3 +250,26 @@ class TestPersistenceThroughTheAgent:
         path = self._state_file(tmp_path)
         result = agent._run_python_tool(path, {"code": "print(actions_this_level)"})
         assert "1" in result.content, result.content
+
+
+def test_the_code_store_evicts_oldest_first_when_it_fills(monkeypatch, tmp_path):
+    """It is re-executed at the top of every later call, so unbounded growth
+    is a per-turn tax for the rest of the game."""
+    module = _reloaded(monkeypatch, PERSIST_CODE="1", PERSIST_CODE_MAX_CHARS="120")
+    agent = module.ToolAgent(
+        model="Qwen/Qwen3.6-27B", base_url="http://127.0.0.1:1", provider="vllm"
+    )
+    agent._current_valid_actions = ["UP"]
+    from inference.agent.runtime_state import Frame, HistoryEntry, write_runtime_state
+
+    path = tmp_path / "state.json"
+    frame = Frame(grid=((0, 0), (0, 0)), step=0, level=1)
+    write_runtime_state(path, current_frame=frame, history=[HistoryEntry(action="", frame=frame)])
+
+    for index in range(4):
+        agent._run_python_tool(
+            path, {"code": f"remember('m{index}', 'x{index} = ' + '1' * 50)"}
+        )
+    assert sum(len(v) for v in agent._remembered_code.values()) <= 120
+    assert "m0" not in agent._remembered_code
+    assert "m3" in agent._remembered_code

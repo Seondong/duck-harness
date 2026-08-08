@@ -163,6 +163,7 @@ _ACTION_ECONOMY_ENABLED = _get_env_bool("ACTION_ECONOMY", True)
 # against an executable world model, and the run that turns it on should be the
 # run that measures it.
 _PERSIST_CODE_ENABLED = _get_env_bool("PERSIST_CODE", False)
+_PERSIST_CODE_MAX_CHARS = _get_env_int("PERSIST_CODE_MAX_CHARS", 20000)
 _LOCAL_ANALYZER_TEMPERATURE = _get_env_float("LOCAL_ANALYZER_TEMPERATURE", 0.6)
 _LOCAL_ANALYZER_TOP_P = _get_env_float("LOCAL_ANALYZER_TOP_P", 0.95)
 _LOCAL_ANALYZER_TOP_K = _get_env_int("LOCAL_ANALYZER_TOP_K", 20)
@@ -1751,6 +1752,14 @@ class ToolAgent:
             else:
                 self._remembered_code[str(name)] = str(source)
                 print(f"[code] step={step} remembered={name} chars={len(str(source))}", flush=True)
+        # The store rides in the state payload of every later python call and
+        # is re-executed at the top of each one, so an unbounded one costs both
+        # IPC and startup time on every turn for the rest of the game. Oldest
+        # out: a model that keeps rewriting its dynamics wants the newest.
+        while sum(len(v) for v in self._remembered_code.values()) > _PERSIST_CODE_MAX_CHARS:
+            evicted, _ = next(iter(self._remembered_code.items()))
+            self._remembered_code.pop(evicted)
+            print(f"[code] step={step} evicted={evicted} reason=store_full", flush=True)
         payload: dict[str, Any] = {"tool": "python"}
         rendered_stdout = str(sandbox_result.get("stdout", "") or "")
         rendered_error = str(sandbox_result.get("error", "") or "")
