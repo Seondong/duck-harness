@@ -155,10 +155,12 @@ _FRAMING_MAX_PER_PASS = _get_env_int("FRAMING_MAX_PER_PASS", 6)
 # The motif vocabulary: ~440 tokens of names in the system prompt, with the
 # per-motif detail fetched from Python only when the model asks for one.
 _MOTIFS_ENABLED = _get_env_bool("MOTIFS_ENABLED", False)
-# The benchmark's cost model, stated to the model. On by default: every line of
-# it is true and every line pushes toward fewer environment actions, which is
-# the only quantity the score is computed from.
-_ACTION_ECONOMY_ENABLED = _get_env_bool("ACTION_ECONOMY", True)
+# The benchmark's cost model, stated to the model. Every line of it is true.
+# It also cost 0.63 -- 1.40 down to 0.77 as the only active delta in that run --
+# so it is off, and the honest reading is that being told the arithmetic of the
+# score does not help this model play, and probably crowds out instructions
+# that do. See docs/action-economy.md.
+_ACTION_ECONOMY_ENABLED = _get_env_bool("ACTION_ECONOMY", False)
 # Code that survives the turn. Off by default: it is the enabler for planning
 # against an executable world model, and the run that turns it on should be the
 # run that measures it.

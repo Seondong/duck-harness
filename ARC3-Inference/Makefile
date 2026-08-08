@@ -174,9 +174,9 @@ FRAMING_MAX_PER_PASS ?= 6
 # to measuring it.
 MOTIFS_ENABLED ?= 0
 
-# The scoring rules, stated to the model: (H/A)^2 per cleared level, cutoff at
-# 5H, reasoning unmetered. ~400 tokens, and every line argues for fewer actions.
-ACTION_ECONOMY ?= 1
+# The scoring rules stated to the model. Measured at 0.77 against a 1.40
+# baseline as that run's only active delta, so: off.
+ACTION_ECONOMY ?= 0
 # Code that survives the turn. Off until a run is dedicated to measuring it.
 PERSIST_CODE ?= 0
 
